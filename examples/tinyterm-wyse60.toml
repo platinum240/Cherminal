@@ -1,0 +1,12 @@
+# Example keymap: drop into ~/.config/cherminal/keymaps/ and set
+# keymap = "tinyterm-wyse60" in a session. Generate your own exact copy of
+# another emulator's keys with `cherminal-keycapture`.
+inherit = "wyse"
+
+[keys]
+# Example overrides: map PC editing keys to Wyse editing commands.
+Delete = "\\eW"
+Insert = "\\eQ"
+End = "\\eT"            # clear to end of line
+"Ctrl+End" = "\\eY"     # clear to end of page
+KeypadEnter = "\\r"

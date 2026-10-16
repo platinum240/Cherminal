@@ -1,0 +1,14 @@
+# Example session: ~/.config/cherminal/sessions/warehouse.toml
+name = "Warehouse"
+transport = "telnet"
+host = "10.0.0.5"
+emulation = "wyse60"
+keymap = "tinyterm-wyse60"
+answerback = "DOCK3"
+
+[keys]
+F12 = "action:macro:login"
+
+[macros]
+login = "operator\\r"
+"F3=Exit" = "^AB\\r"
