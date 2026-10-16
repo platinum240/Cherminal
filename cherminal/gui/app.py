@@ -22,7 +22,7 @@ class MainWindow(QMainWindow):
     def __init__(self, store: ProfileStore):
         super().__init__()
         self.store = store
-        self.setWindowTitle("Cherminal")
+        self.setWindowTitle(f"Cherminal {__version__}")
         self.tabs = QTabWidget(tabsClosable=True, movable=True, documentMode=True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
         self.tabs.currentChanged.connect(self._tab_changed)

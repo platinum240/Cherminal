@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 LINUX_TAG="${LINUX_TAG:-manylinux_2_28_x86_64}"
 
-version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
+version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' cherminal/__init__.py)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 

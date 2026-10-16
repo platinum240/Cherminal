@@ -1,3 +1,4 @@
 """Cherminal: a terminal emulator for host connections on Linux."""
 
-__version__ = "0.1.0"
+# The one place the version lives; pyproject.toml and the AppImage read it.
+__version__ = "0.2.0"
