@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>cherminal</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <name>Cherminal</name>
+  <summary>Terminal emulator for host connections</summary>
+  <description>
+    <p>VT, ANSI and Wyse terminal emulation over SSH, Telnet, serial and local
+    shell, with key mapping and saved sessions.</p>
+  </description>
+  <launchable type="desktop-id">cherminal.desktop</launchable>
+  <provides>
+    <binary>cherminal</binary>
+  </provides>
+</component>
