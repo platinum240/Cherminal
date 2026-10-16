@@ -348,19 +348,22 @@ class SessionManager(QDialog):
 
     ORIGIN_LABEL = {"user": "", "shared": "  [shared]", "customised": "  [shared, edited here]"}
 
-    def __init__(self, store: ProfileStore, parent=None):
+    def __init__(self, store: ProfileStore, parent=None, limited: bool = False):
         super().__init__(parent)
         self.store = store
+        self.limited = limited
         self.chosen: SessionProfile | None = None
         self.setWindowTitle("Sessions")
         self.list = QListWidget()
         self.list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         self.list.itemDoubleClicked.connect(lambda _: self._connect())
         buttons = QVBoxLayout()
-        for label, slot in (("Connect", self._connect), ("New…", self._new),
-                            ("Edit…", self._edit), ("Duplicate", self._duplicate),
-                            ("Delete", self._delete), (None, None),
-                            ("Import…", self._import), ("Export…", self._export)):
+        actions = [("Connect", self._connect)]
+        if not limited:
+            actions += [("New…", self._new), ("Edit…", self._edit),
+                        ("Duplicate", self._duplicate), ("Delete", self._delete), (None, None),
+                        ("Import…", self._import), ("Export…", self._export)]
+        for label, slot in actions:
             if label is None:
                 buttons.addSpacing(12)
                 continue
@@ -380,6 +383,8 @@ class SessionManager(QDialog):
     def refresh(self) -> None:
         self.list.clear()
         for p in self.store.list():
+            if self.limited and p.transport == "local":
+                continue                # limited mode never offers a local shell
             where = {"local": "local shell", "serial": p.serial_device}.get(p.transport, p.host)
             item = QListWidgetItem(f"{p.name}    —    {p.transport} {where} · {p.emulation}"
                                    + self.ORIGIN_LABEL[self.store.origin(p.name)])
