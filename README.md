@@ -38,9 +38,9 @@ Download `Cherminal-<version>-x86_64.AppImage` from a release (or the
 `appimage` workflow's artifact), copy it over, and run it:
 
 ```sh
-chmod +x Cherminal-0.1.0-x86_64.AppImage
-./Cherminal-0.1.0-x86_64.AppImage                 # same options as `cherminal`
-./Cherminal-0.1.0-x86_64.AppImage keycapture --name mykeys
+chmod +x Cherminal-0.2.0-x86_64.AppImage
+./Cherminal-0.2.0-x86_64.AppImage                 # same options as `cherminal`
+./Cherminal-0.2.0-x86_64.AppImage keycapture --name mykeys
 ```
 
 It carries its own Python and Qt and runs on x86_64 distributions from
@@ -48,6 +48,17 @@ about 2019 onward (glibc 2.28+: RHEL/Rocky 8, Debian 10, Ubuntu 20.04).
 If it reports a FUSE error, install `libfuse2` (or `fuse-libs`), or run it
 with `--appimage-extract-and-run`. Build one yourself with
 `packaging/build-appimage.sh`.
+
+### Updating
+
+Run `cherminal --version` to see what you have (see
+[CHANGELOG.md](CHANGELOG.md) for what changed). For an AppImage, replace the
+file with the new one. For a pip install, from an updated checkout:
+
+```sh
+git pull
+pip install --upgrade .
+```
 
 ### With pip
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cherminal"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Terminal emulator for host connections on Linux: legacy emulations, real key mapping, saved sessions"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,6 +21,9 @@ dev = ["pytest>=7"]
 [project.scripts]
 cherminal = "cherminal.__main__:main"
 cherminal-keycapture = "cherminal.tools.keycapture:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "cherminal.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["cherminal*"]
