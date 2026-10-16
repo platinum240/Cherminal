@@ -58,7 +58,10 @@ class Session:
 
     def disconnect(self) -> None:
         if self.transport:
-            self.transport.close()
+            t = self.transport
+            # Stop callbacks first: the UI that would receive them may be going away.
+            t.on_open, t.on_data, t.on_close = (lambda: None), (lambda data: None), (lambda r: None)
+            t.close()
         self.connected = False
 
     def feed(self, data: bytes) -> None:

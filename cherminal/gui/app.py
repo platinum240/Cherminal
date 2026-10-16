@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import signal
 import sys
 
+from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (QApplication, QFontDialog, QLabel, QMainWindow, QMessageBox,
                              QTabWidget, QToolBar)
@@ -172,9 +174,12 @@ class MainWindow(QMainWindow):
         if ok:
             term.set_font(font.family(), font.pointSize())
 
-    def closeEvent(self, event) -> None:
+    def disconnect_all(self) -> None:
         for i in range(self.tabs.count()):
             self.tabs.widget(i).session.disconnect()
+
+    def closeEvent(self, event) -> None:
+        self.disconnect_all()
         super().closeEvent(event)
 
 
@@ -182,6 +187,20 @@ def run(profiles: list[SessionProfile], store: ProfileStore, show_manager: bool)
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("Cherminal")
     win = MainWindow(store)
+    # Every way out (last window closed, Ctrl+C, kill, logout) closes the
+    # connections cleanly rather than leaving it to process teardown.
+    app.aboutToQuit.connect(win.disconnect_all)
+
+    def on_signal(signum, frame):
+        win.disconnect_all()
+        app.quit()
+
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, on_signal)
+    # Python only runs signal handlers when it gets control back from Qt.
+    tick = QTimer(interval=250)
+    tick.timeout.connect(lambda: None)
+    tick.start()
     win.resize(820, 520)
     win.show()
     for p in profiles:

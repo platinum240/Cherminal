@@ -34,6 +34,10 @@ class Transport:
         reason = "connection closed"
         try:
             self._open()
+            if self._closing:
+                # Closed while still connecting: drop the late connection.
+                self._close()
+                return
             self.on_open()
             while not self._closing:
                 data = self._read()
