@@ -70,7 +70,13 @@ class SSHTransport(Transport):
             except paramiko.BadHostKeyException as e:
                 raise OSError(f"host key for {self.host} has CHANGED (possible spoofing); "
                               f"refusing to connect. Offered key: {fingerprint(e.key)}") from e
-            except paramiko.AuthenticationException:
+            except paramiko.SSHException as e:
+                # paramiko raises a plain SSHException, not an
+                # AuthenticationException, when it had nothing to try (no
+                # keys, no agent, no password yet). Both mean: ask for one.
+                no_methods = "No authentication methods available" in str(e)
+                if not (isinstance(e, paramiko.AuthenticationException) or no_methods):
+                    raise
                 if attempt == 3:
                     raise OSError("authentication failed")
                 if self._closing:
