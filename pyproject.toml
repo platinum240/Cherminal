@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cherminal"
+version = "0.1.0"
+description = "Terminal emulator for host connections on Linux: legacy emulations, real key mapping, saved sessions"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "PyQt6>=6.5",
+    "paramiko>=3.0",
+    "pyserial>=3.5",
+    "tomli-w>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+cherminal = "cherminal.__main__:main"
+cherminal-keycapture = "cherminal.tools.keycapture:main"
+
+[tool.setuptools.packages.find]
+include = ["cherminal*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
