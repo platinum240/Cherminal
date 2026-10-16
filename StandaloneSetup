@@ -1,0 +1,4 @@
+Download standalone installer 
+  https://github.com/platinum240/Cherminal/actions/runs/38843950846/artifacts/12022416690
+Adjust version number as needed
+chmod +x Cherminal-0.2.0-x86_64.AppImage && ./Cherminal-0.2.0-x86_64.AppImage
