@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QObject, QRect, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import (QClipboard, QColor, QFont, QFontMetrics, QGuiApplication, QKeyEvent,
+from PyQt6.QtGui import (QClipboard, QColor, QFont, QFontMetrics, QFontMetricsF, QGuiApplication, QKeyEvent,
                          QMouseEvent, QPainter, QWheelEvent)
 from PyQt6.QtWidgets import QApplication, QInputDialog, QLineEdit, QMessageBox, QWidget
 
@@ -34,7 +34,9 @@ class TerminalWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled)
         self.setCursor(Qt.CursorShape.IBeamCursor)
-        self.set_font(session.profile.font_family, session.profile.font_size)
+        self.resize_mode = session.profile.resize_mode
+        self.offset_x = self.offset_y = 0     # centres the grid in scale mode
+        self.set_base_font(session.profile.font_family, session.profile.font_size)
 
         self.scroll_offset = 0                 # lines scrolled back into history
         self.sel_start: tuple[int, int] | None = None   # (absolute line, col)
@@ -53,8 +55,23 @@ class TerminalWidget(QWidget):
 
     # ------------------------------------------------------------ geometry
 
-    def set_font(self, family: str, size: int) -> None:
-        font = QFont(family, size)
+    def set_base_font(self, family: str, size: float) -> None:
+        """The font chosen by the user; scale mode resizes from it to fit."""
+        self.base_family, self.base_size = family, size
+        self.set_font(family, size)
+        if self.resize_mode == "scale" and self.isVisible():
+            self._fit_font()
+
+    def set_resize_mode(self, mode: str) -> None:
+        self.resize_mode = mode
+        if mode == "grow":
+            self.set_font(self.base_family, self.base_size)
+            self.offset_x = self.offset_y = 0
+        self._apply_resize()
+
+    def set_font(self, family: str, size: float) -> None:
+        font = QFont(family)
+        font.setPointSizeF(size)
         font.setStyleHint(QFont.StyleHint.TypeWriter)
         font.setFixedPitch(True)
         self.term_font = font
@@ -71,13 +88,40 @@ class TerminalWidget(QWidget):
         return QSize(self.cw * self.session.screen.cols, self.ch * self.session.screen.rows)
 
     def resizeEvent(self, event) -> None:
+        self._apply_resize()
+        super().resizeEvent(event)
+
+    def _apply_resize(self) -> None:
+        if self.resize_mode == "scale":
+            self._fit_font()
+            return
         cols = max(2, self.width() // self.cw)
         rows = max(2, self.height() // self.ch)
         s = self.session.screen
         if (cols, rows) != (s.cols, s.rows):
             self.session.resize(cols, rows)
             self.status_changed.emit(self.status_text())
-        super().resizeEvent(event)
+        self.update()
+
+    def _fit_font(self) -> None:
+        """Scale mode: keep the host's grid and size the font to fill the window."""
+        s = self.session.screen
+        if self.width() < 10 or self.height() < 10:
+            return
+        ref = QFont(self.base_family)
+        ref.setPointSizeF(100)
+        ref.setStyleHint(QFont.StyleHint.TypeWriter)
+        fm = QFontMetricsF(ref)
+        w100, h100 = fm.horizontalAdvance("M"), fm.height()
+        size = 100 * min(self.width() / (s.cols * w100), self.height() / (s.rows * h100))
+        size = max(4.0, int(size * 2) / 2)          # half-point steps
+        self.set_font(self.base_family, size)
+        # Integer cell metrics can round up; step down until the grid fits.
+        while size > 4 and (self.cw * s.cols > self.width() or self.ch * s.rows > self.height()):
+            size -= 0.5
+            self.set_font(self.base_family, size)
+        self.offset_x = max(0, (self.width() - self.cw * s.cols) // 2)
+        self.offset_y = max(0, (self.height() - self.ch * s.rows) // 2)
 
     # ---------------------------------------------------------- connection
 
@@ -191,8 +235,8 @@ class TerminalWidget(QWidget):
     def _cell_at(self, pos) -> tuple[int, int]:
         s = self.session.screen
         history = 0 if s.using_alt_screen else len(s.scrollback)
-        row = max(0, min(s.rows - 1, int(pos.y()) // self.ch))
-        col = max(0, min(s.cols, int(pos.x()) // self.cw))
+        row = max(0, min(s.rows - 1, (int(pos.y()) - self.offset_y) // self.ch))
+        col = max(0, min(s.cols, (int(pos.x()) - self.offset_x) // self.cw))
         return history - self.scroll_offset + row, col
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -290,6 +334,7 @@ class TerminalWidget(QWidget):
         with self.session.lock:
             s = self.session.screen
             p.fillRect(self.rect(), QColor(*(sch.fg if s.reverse_screen else sch.bg)))
+            p.translate(self.offset_x, self.offset_y)
             lines = self._all_lines()
             history = len(lines) - s.rows
             first = history - self.scroll_offset

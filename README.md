@@ -21,6 +21,9 @@ sources it was derived from, and the architecture.
   press-to-capture editor, and `action:` bindings (paste, break, macros).
 - **Saved sessions:** one readable TOML file per session under
   `~/.config/cherminal/sessions/`; no passwords are stored.
+- **Scale to window:** by default the text grows and shrinks with the window
+  while the host keeps its fixed grid (80×24 etc.); switch a session to
+  "add rows and columns" instead, or toggle View › Scale text to window.
 - **Function-key bar** built from each session's macros, tabs, scrollback,
   copy/paste (including X11 primary selection), colour schemes, any code page.
 - **`cherminal-keycapture`:** records exactly what another emulator sends for

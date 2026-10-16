@@ -38,7 +38,7 @@ it `UNVERIFIED` so it can be checked against real hardware or a manual.
 | Emulations | VT100, VT220, VT320, VT420, ANSI (SCO console), AT386, Linux console, xterm, Wyse 50, Wyse 60, TVI 925/950, ADM-3A | All present; VT/ANSI family is the most complete, TVI/ADM share the Wyse core |
 | Emulations, later | IBM 3101/3151, TVI 912, TTY, VT 7-bit variants | Later phase |
 | Code pages | Any Python codec (CP437, CP1251, CP1252, ISO 8859-x, ...) plus UTF-8, which ITX lacked | Done |
-| Resize | Grow the grid (sends NAWS / SSH window change) or keep the grid and scale the font | Grid growth done; font scaling later |
+| Resize | Grow the grid (sends NAWS / SSH window change) or keep the grid and scale the font | Both; per session, plus View > Scale text to window |
 | Function-key bar | Clickable buttons bound to macros | Done (toolbar from profile macros) |
 | Connections | SSH, Telnet, serial, local shell | All four |
 | Key mapping | Per-emulation defaults, user keymap files, per-session overrides, mode-aware keys (cursor/keypad application mode), actions and macros | Done, with a GUI capture editor |

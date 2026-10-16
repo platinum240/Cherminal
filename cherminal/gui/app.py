@@ -63,6 +63,8 @@ class MainWindow(QMainWindow):
         self._action(e, "&Paste", lambda: self._term() and self._term().paste())
         v = mb.addMenu("&View")
         self._action(v, "&Font…", self.choose_font)
+        self.scale_action = self._action(v, "&Scale text to window", self.toggle_scale)
+        self.scale_action.setCheckable(True)
         self._action(v, "Show &function-key bar",
                      lambda: self.fkey_bar.setVisible(not self.fkey_bar.isVisible()))
         s = mb.addMenu("&Session")
@@ -119,6 +121,7 @@ class MainWindow(QMainWindow):
             self.status.setText("")
             return
         self.status.setText(term.status_text())
+        self.scale_action.setChecked(term.resize_mode == "scale")
         for name in term.session.profile.macros:
             act = self.fkey_bar.addAction(name)
             act.triggered.connect(lambda _=False, n=name, t=term: (t.session.run_macro(n),
@@ -172,7 +175,13 @@ class MainWindow(QMainWindow):
         font, ok = QFontDialog.getFont(term.term_font, self, "Terminal font",
                                        QFontDialog.FontDialogOption.MonospacedFonts)
         if ok:
-            term.set_font(font.family(), font.pointSize())
+            term.set_base_font(font.family(), font.pointSizeF())
+
+    def toggle_scale(self) -> None:
+        term = self._term()
+        if term:
+            term.set_resize_mode("scale" if self.scale_action.isChecked() else "grow")
+            self.status.setText(term.status_text())
 
     def disconnect_all(self) -> None:
         for i in range(self.tabs.count()):
