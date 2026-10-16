@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Cherminal
+Comment=Terminal emulator for host connections
+Exec=cherminal %U
+Icon=cherminal
+Terminal=false
+Categories=System;TerminalEmulator;
