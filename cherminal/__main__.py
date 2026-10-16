@@ -7,12 +7,15 @@
     cherminal --serial /dev/ttyUSB0 --baud 9600
     cherminal --local
     cherminal --list                  print saved sessions
+    cherminal --export site.cherminal "Mainframe A" "Mainframe B"
+    cherminal --import site.cherminal
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import tomllib
 
 from . import __version__, emulation
 from .config import ProfileStore, SessionProfile
@@ -57,14 +60,34 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--local", action="store_true", help="open a local shell")
     ap.add_argument("-e", "--emulation", choices=list(emulation.EMULATIONS))
     ap.add_argument("--list", action="store_true", help="list saved sessions and exit")
+    ap.add_argument("--export", metavar="FILE",
+                    help="save the named sessions (all if none named) and their keymaps "
+                         "to one file, then exit")
+    ap.add_argument("--import", dest="import_", metavar="FILE", action="append",
+                    help="add the sessions and keymaps in FILE, replacing same-named ones")
     ap.add_argument("--version", action="version", version=f"cherminal {__version__}")
     args = ap.parse_args(argv)
 
     store = ProfileStore()
     if args.list:
         for p in store.list():
-            print(f"{p.name}\t{p.transport}\t{p.host or p.serial_device}\t{p.emulation}")
+            print(f"{p.name}\t{p.transport}\t{p.host or p.serial_device}\t{p.emulation}"
+                  f"\t{store.origin(p.name)}")
         return 0
+    try:
+        if args.export:
+            names = args.sessions or [p.name for p in store.list()]
+            store.export_bundle(names, args.export)
+            print(f"exported {len(names)} session(s) to {args.export}")
+            return 0
+        for path in args.import_ or []:
+            names = store.import_bundle(path)
+            print(f"imported {', '.join(names) or 'no sessions'} from {path}")
+        if args.import_ and not args.sessions:
+            return 0
+    except (OSError, ValueError, tomllib.TOMLDecodeError) as e:
+        print(f"cherminal: {e}", file=sys.stderr)
+        return 2
     try:
         profiles = build_profiles(args, store)
     except (FileNotFoundError, ValueError) as e:

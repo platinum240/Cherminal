@@ -101,6 +101,41 @@ Then, from TinyTerm (or any emulator) set to the emulation you use, Telnet
 to this machine on port 2323 and press each key it asks for. The keymap is
 saved to `~/.config/cherminal/keymaps/tinyterm-wyse60.toml`.
 
+## Sharing sessions across machines
+
+A session file (`.cherminal`) holds one or more connections together with
+every custom keymap they use, so the key mappings always travel with them.
+
+Set the connections up once on any machine, then export them:
+
+```sh
+cherminal --export mainframes.cherminal "Mainframe A" "Mainframe B"
+```
+
+(or select them in File › Sessions and press Export…). There are two ways
+to use the file on other machines.
+
+**Shared setup (recommended for many thin clients).** Put the file in a
+folder Cherminal reads at start-up. Every client then sees the same
+sessions, marked `[shared]`, and an update to the file reaches all of them
+the next time the Sessions window opens. Nothing needs to be imported, so
+it also works where the home folder is wiped at logoff. Cherminal looks in,
+first match wins:
+
+1. each folder in `$CHERMINAL_SITE_DIR` (`:`-separated), for example a
+   mounted network share;
+2. `cherminal-config/` next to the AppImage;
+3. `/etc/xdg/cherminal/` (each `$XDG_CONFIG_DIRS` folder).
+
+Each of these may hold `*.cherminal` files and `sessions/` and `keymaps/`
+folders laid out like `~/.config/cherminal`. If a user edits a shared
+session, their copy is saved in their own folder and shown as
+`[shared, edited here]`; deleting it goes back to the shared version.
+
+**Import.** `cherminal --import mainframes.cherminal` (or Import… in the
+Sessions window) copies the sessions and keymaps into the user's own
+folder, replacing any with the same names.
+
 ## Development
 
 ```sh
