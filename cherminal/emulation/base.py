@@ -19,6 +19,8 @@ class Emulation:
     term_type = "dumb"          # value for $TERM / SSH pty request
     telnet_type = "DUMB"        # Telnet TTYPE (RFC 1091) answer
     keymap = "vt100"            # built-in keymap this emulation starts from
+    block_mode = False          # True: keys edit a local buffer (see ibm3270)
+    fixed_size = False          # True: the host sets the grid; the window can't resize it
 
     def __init__(self, screen: Screen, reply: Callable[[bytes], None] | None = None,
                  encoding: str = "utf-8", answerback: str = ""):
@@ -41,6 +43,10 @@ class Emulation:
 
     def send(self, text: str) -> None:
         self.reply(text.encode(self.encoding, errors="replace"))
+
+    def notice(self, text: str) -> None:
+        """Show a message from Cherminal itself, such as a disconnect."""
+        self.feed(f"\r\n[Cherminal: {text}]\r\n".encode(self.encoding, "replace"))
 
     def reset(self) -> None:
         self.screen.reset()

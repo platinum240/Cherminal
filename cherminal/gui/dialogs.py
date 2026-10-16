@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QF
                              QWidget)
 
 from .. import emulation
-from ..config import TRANSPORTS, ProfileStore, SessionProfile
+from ..config import BUNDLE_SUFFIX, TRANSPORTS, ProfileStore, SessionProfile
 from ..keymap import Binding, normalize_key
 from .colors import SCHEMES
 from .keys import key_name
@@ -156,6 +156,8 @@ class SessionEditor(QDialog):
         self.transport.currentTextChanged.connect(self._transport_changed)
         self.host = QLineEdit()
         self.port = QSpinBox(maximum=65535, specialValueText="default")
+        self.tls = QCheckBox("Use TLS (port 992 by default)")
+        self.tls_verify = QCheckBox("Check the host's certificate")
         self.username = QLineEdit()
         self.identity = QLineEdit()
         browse = QPushButton("Browse…")
@@ -179,6 +181,7 @@ class SessionEditor(QDialog):
         for label, widget, kinds in (
                 ("Name", self.name, None), ("Connection", self.transport, None),
                 ("Host", self.host, {"ssh", "telnet"}), ("Port", self.port, {"ssh", "telnet"}),
+                ("Security", self.tls, {"telnet"}), ("", self.tls_verify, {"telnet"}),
                 ("User", self.username, {"ssh"}), ("Private key", ident_row, {"ssh"}),
                 ("Command", self.command, {"local"}),
                 ("Device", self.serial_device, {"serial"}), ("Baud", self.baud, {"serial"}),
@@ -239,7 +242,9 @@ class SessionEditor(QDialog):
         f.addRow("Backspace sends", self.backspace)
         lay.addLayout(f)
         hint = QLabel("Values use \\e for Esc, \\r Enter, \\xHH bytes, ^A control keys, or "
-                      "action:paste / action:copy / action:break / action:macro:NAME.")
+                      "action:paste / action:copy / action:break / action:macro:NAME. "
+                      "IBM 3270 keys: action:enter, action:pf1-pf24, action:pa1-pa3, "
+                      "action:clear, action:reset and the others in the README.")
         hint.setWordWrap(True)
         hint.setFont(QFont(hint.font().family(), max(7, hint.font().pointSize() - 1)))
         lay.addWidget(QLabel("Key overrides for this session"))
@@ -268,6 +273,8 @@ class SessionEditor(QDialog):
         self._transport_changed(p.transport)
         self.host.setText(p.host)
         self.port.setValue(p.port)
+        self.tls.setChecked(p.tls)
+        self.tls_verify.setChecked(p.tls_verify)
         self.username.setText(p.username)
         self.identity.setText(p.identity_file)
         self.command.setText(p.command)
@@ -305,6 +312,7 @@ class SessionEditor(QDialog):
         return SessionProfile(
             name=self.name.text().strip() or "Untitled", transport=self.transport.currentText(),
             host=self.host.text().strip(), port=self.port.value(),
+            tls=self.tls.isChecked(), tls_verify=self.tls_verify.isChecked(),
             username=self.username.text().strip(), identity_file=self.identity.text().strip(),
             command=self.command.text().strip(), serial_device=self.serial_device.text().strip(),
             baud=int(self.baud.currentText()), data_bits=int(self.data_bits.currentText()),
@@ -336,7 +344,9 @@ class SessionEditor(QDialog):
 
 
 class SessionManager(QDialog):
-    """Saved sessions: connect, create, edit, duplicate, delete."""
+    """Saved sessions: connect, create, edit, duplicate, delete, import, export."""
+
+    ORIGIN_LABEL = {"user": "", "shared": "  [shared]", "customised": "  [shared, edited here]"}
 
     def __init__(self, store: ProfileStore, parent=None):
         super().__init__(parent)
@@ -344,11 +354,16 @@ class SessionManager(QDialog):
         self.chosen: SessionProfile | None = None
         self.setWindowTitle("Sessions")
         self.list = QListWidget()
+        self.list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         self.list.itemDoubleClicked.connect(lambda _: self._connect())
         buttons = QVBoxLayout()
         for label, slot in (("Connect", self._connect), ("New…", self._new),
                             ("Edit…", self._edit), ("Duplicate", self._duplicate),
-                            ("Delete", self._delete)):
+                            ("Delete", self._delete), (None, None),
+                            ("Import…", self._import), ("Export…", self._export)):
+            if label is None:
+                buttons.addSpacing(12)
+                continue
             b = QPushButton(label)
             b.clicked.connect(slot)
             buttons.addWidget(b)
@@ -359,14 +374,15 @@ class SessionManager(QDialog):
         lay = QHBoxLayout(self)
         lay.addWidget(self.list, 1)
         lay.addLayout(buttons)
-        self.resize(520, 360)
+        self.resize(560, 380)
         self.refresh()
 
     def refresh(self) -> None:
         self.list.clear()
         for p in self.store.list():
             where = {"local": "local shell", "serial": p.serial_device}.get(p.transport, p.host)
-            item = QListWidgetItem(f"{p.name}    —    {p.transport} {where} · {p.emulation}")
+            item = QListWidgetItem(f"{p.name}    —    {p.transport} {where} · {p.emulation}"
+                                   + self.ORIGIN_LABEL[self.store.origin(p.name)])
             item.setData(Qt.ItemDataRole.UserRole, p)
             self.list.addItem(item)
         if self.list.count():
@@ -375,6 +391,9 @@ class SessionManager(QDialog):
     def _current(self) -> SessionProfile | None:
         item = self.list.currentItem()
         return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    def _selected(self) -> list[SessionProfile]:
+        return [i.data(Qt.ItemDataRole.UserRole) for i in self.list.selectedItems()]
 
     def _connect(self) -> None:
         self.chosen = self._current()
@@ -399,8 +418,48 @@ class SessionManager(QDialog):
 
     def _delete(self) -> None:
         p = self._current()
-        if p and QMessageBox.question(self, "Delete session",
-                                      f"Delete the saved session “{p.name}”?") \
+        if not p:
+            return
+        origin = self.store.origin(p.name)
+        if origin == "shared":
+            QMessageBox.information(self, "Delete session",
+                                    f"“{p.name}” comes from the shared setup, so it can only "
+                                    "be removed there.")
+            return
+        question = (f"Discard your changes to “{p.name}” and go back to the shared version?"
+                    if origin == "customised" else f"Delete the saved session “{p.name}”?")
+        if QMessageBox.question(self, "Delete session", question) \
                 == QMessageBox.StandardButton.Yes:
             self.store.delete(p.name)
             self.refresh()
+
+    def _import(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Import sessions", "",
+                                              f"Cherminal sessions (*{BUNDLE_SUFFIX});;"
+                                              "All files (*)")
+        if not path:
+            return
+        try:
+            names = self.store.import_bundle(path)
+        except (OSError, ValueError, TypeError) as e:
+            QMessageBox.warning(self, "Import sessions", f"Could not import {path}: {e}")
+            return
+        self.refresh()
+        QMessageBox.information(self, "Import sessions",
+                                "Imported: " + (", ".join(names) or "no sessions"))
+
+    def _export(self) -> None:
+        profiles = self._selected()
+        if not profiles:
+            return
+        default = (profiles[0].slug if len(profiles) == 1 else "sessions") + BUNDLE_SUFFIX
+        path, _ = QFileDialog.getSaveFileName(self, "Export sessions", default,
+                                              f"Cherminal sessions (*{BUNDLE_SUFFIX})")
+        if not path:
+            return
+        if not path.endswith(BUNDLE_SUFFIX):
+            path += BUNDLE_SUFFIX
+        try:
+            self.store.export_bundle([p.name for p in profiles], path)
+        except (OSError, ValueError) as e:
+            QMessageBox.warning(self, "Export sessions", f"Could not export: {e}")

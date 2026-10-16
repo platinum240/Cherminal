@@ -13,9 +13,11 @@ sources it was derived from, and the architecture.
 ## Features
 
 - **Emulations:** VT100, VT220, VT320, VT420, SCO ANSI, AT386, Linux console,
-  xterm (256/true colour), Wyse 50, Wyse 60, TeleVideo 925/950, ADM-3A.
+  xterm (256/true colour), Wyse 50, Wyse 60, TeleVideo 925/950, ADM-3A,
+  and IBM 3278/3279 models 2-5 for mainframes (TN3270).
 - **Connections:** SSH (keys, agent, password, host-key verification),
-  Telnet (TTYPE, NAWS, binary, echo/SGA), serial ports, local shell.
+  Telnet (TTYPE, NAWS, binary, echo/SGA, optional TLS), TN3270, serial
+  ports, local shell.
 - **Key mapping:** per-emulation defaults, reusable keymap files with
   inheritance, per-session overrides, application cursor/keypad aware, a
   press-to-capture editor, and `action:` bindings (paste, break, macros).
@@ -100,6 +102,81 @@ cherminal-keycapture --port 2323 --name tinyterm-wyse60 --inherit wyse
 Then, from TinyTerm (or any emulator) set to the emulation you use, Telnet
 to this machine on port 2323 and press each key it asks for. The keymap is
 saved to `~/.config/cherminal/keymaps/tinyterm-wyse60.toml`.
+
+## IBM mainframes (TN3270)
+
+Choose connection **telnet** and emulation `ibm3278-2` (24×80), `ibm3278-3`
+(32×80), `ibm3278-4` (43×80) or `ibm3278-5` (27×132); the larger models
+switch to their size when the host asks. Tick **Use TLS** for port 992 or
+any secure TN3270 port; untick "Check the host's certificate" only if the
+host uses a certificate from an in-house CA that this machine doesn't
+trust. The character set defaults to EBCDIC code page 037 (US/Canada); set
+e.g. `cp500`, `cp273` or `cp1140` under Terminal › Character set if your
+host uses another.
+
+Typing edits the screen locally and the attention keys send it. The
+default keyboard (built-in keymap `ibm3270`):
+
+| Key | 3270 key | Key | 3270 key |
+|---|---|---|---|
+| Enter | Enter | Shift+Enter | New line |
+| F1-F12 | PF1-PF12 | Shift+F1-F12 | PF13-PF24 |
+| PageUp / PageDown | PF7 / PF8 | Alt+F1/F2/F3 | PA1/PA2/PA3 |
+| Pause | Clear | Escape | Reset (unlock keyboard) |
+| Tab / Shift+Tab | Next / previous field | Home | First input field |
+| End | End of field | Insert | Insert mode |
+| Backspace | Erase left | Delete | Delete |
+| Ctrl+End | Erase to end of field | Ctrl+Delete | Erase all input |
+
+Any key can be remapped with `action:` and one of `enter`, `clear`,
+`pf1`-`pf24`, `pa1`-`pa3`, `reset`, `tab`, `backtab`, `home`, `newline`,
+`up`, `down`, `left`, `right`, `field-end`, `insert`, `erase`, `delete`,
+`erase-eof`, `erase-input`. Put overrides in the session's key overrides or
+in a keymap file with `inherit = "ibm3270"`, for example
+`Ctrl+Enter = "action:enter"`. A keymap file shared as described below gives
+every machine the same mainframe keyboard.
+
+The status bar shows the 3270 operator information: `X System` while the
+host has the keyboard locked, `X Protected` when typing outside an input
+field, `Insert`, and the cursor's row/column.
+
+Not yet supported: TN3270E (LU names, SysReq/Attn), 3287 printing, file
+transfer (IND$FILE), and 5250 (IBM i).
+
+## Sharing sessions across machines
+
+A session file (`.cherminal`) holds one or more connections together with
+every custom keymap they use, so the key mappings always travel with them.
+
+Set the connections up once on any machine, then export them:
+
+```sh
+cherminal --export mainframes.cherminal "Mainframe A" "Mainframe B"
+```
+
+(or select them in File › Sessions and press Export…). There are two ways
+to use the file on other machines.
+
+**Shared setup (recommended for many thin clients).** Put the file in a
+folder Cherminal reads at start-up. Every client then sees the same
+sessions, marked `[shared]`, and an update to the file reaches all of them
+the next time the Sessions window opens. Nothing needs to be imported, so
+it also works where the home folder is wiped at logoff. Cherminal looks in,
+first match wins:
+
+1. each folder in `$CHERMINAL_SITE_DIR` (`:`-separated), for example a
+   mounted network share;
+2. `cherminal-config/` next to the AppImage;
+3. `/etc/xdg/cherminal/` (each `$XDG_CONFIG_DIRS` folder).
+
+Each of these may hold `*.cherminal` files and `sessions/` and `keymaps/`
+folders laid out like `~/.config/cherminal`. If a user edits a shared
+session, their copy is saved in their own folder and shown as
+`[shared, edited here]`; deleting it goes back to the shared version.
+
+**Import.** `cherminal --import mainframes.cherminal` (or Import… in the
+Sessions window) copies the sessions and keymaps into the user's own
+folder, replacing any with the same names.
 
 ## Development
 

@@ -1,4 +1,8 @@
-"""Telnet client (RFC 854) with BINARY, ECHO, SGA, TTYPE and NAWS options.
+"""Telnet client (RFC 854) with BINARY, ECHO, SGA, TTYPE, NAWS and EOR options.
+
+In TN3270 mode (RFC 1576) the session is binary both ways and framed in
+records: incoming data keeps 0xFF doubled and each IAC EOR, so the 3270
+emulation can find record boundaries, and each write is sent as one record.
 
 ``TelnetProtocol`` is the pure option-negotiation state machine, kept
 separate from sockets so it can be tested directly.
@@ -7,27 +11,34 @@ separate from sockets so it can be tested directly.
 from __future__ import annotations
 
 import socket
+import ssl
 import struct
 from typing import Callable
 
 from .base import Transport
 
 IAC, DONT, DO, WONT, WILL, SB, SE = 255, 254, 253, 252, 251, 250, 240
-NOP, BRK, AYT, GA = 241, 243, 246, 249
-BINARY, ECHO, SGA, TTYPE, NAWS = 0, 1, 3, 24, 31
+NOP, BRK, AYT, GA, EOR_CMD = 241, 243, 246, 249, 239
+BINARY, ECHO, SGA, TTYPE, EOR, NAWS = 0, 1, 3, 24, 25, 31
 TTYPE_IS, TTYPE_SEND = 0, 1
 
 WE_SUPPORT = {BINARY, SGA, TTYPE, NAWS}     # options we will enable locally
 THEY_MAY = {BINARY, ECHO, SGA}              # options the server may enable
+# TN3270: no NAWS (the screen size comes from the terminal type).
+WE_SUPPORT_3270 = {BINARY, SGA, TTYPE, EOR}
+THEY_MAY_3270 = {BINARY, SGA, EOR}
 
 _DATA, _IAC, _VERB, _SB, _SB_IAC, _CR = range(6)
 
 
 class TelnetProtocol:
     def __init__(self, send: Callable[[bytes], None], term_type: str = "VT220",
-                 cols: int = 80, rows: int = 24):
+                 cols: int = 80, rows: int = 24, tn3270: bool = False):
         self.send = send
         self.term_type = term_type
+        self.tn3270 = tn3270
+        self.we_support = WE_SUPPORT_3270 if tn3270 else WE_SUPPORT
+        self.they_may = THEY_MAY_3270 if tn3270 else THEY_MAY
         self.cols, self.rows = cols, rows
         self.local: set[int] = set()     # options enabled on our side (WILL acked)
         self.remote: set[int] = set()    # options enabled on the server side
@@ -42,7 +53,12 @@ class TelnetProtocol:
 
     def start(self) -> None:
         """Offer the options a terminal client normally wants."""
-        for verb, opt in ((WILL, TTYPE), (WILL, NAWS), (DO, SGA), (DO, ECHO)):
+        offers = ((WILL, TTYPE), (WILL, NAWS), (DO, SGA), (DO, ECHO))
+        if self.tn3270:
+            # TN3270 hosts lead the negotiation, and some (Hercules) expect
+            # exact replies to their own requests, so offer nothing.
+            offers = ()
+        for verb, opt in offers:
             self._asked.add((verb, opt))
             self._send_cmd(verb, opt)
 
@@ -53,6 +69,8 @@ class TelnetProtocol:
 
     def encode(self, data: bytes) -> bytes:
         data = data.replace(b"\xff", b"\xff\xff")
+        if self.tn3270:
+            return data + bytes([IAC, EOR_CMD])
         if BINARY not in self.local:
             # NVT rule: a bare CR is sent as CR NUL.
             out = bytearray()
@@ -85,7 +103,7 @@ class TelnetProtocol:
             if st == _DATA:
                 if b == IAC:
                     self._state = _IAC
-                elif b == 0x0d and BINARY not in self.remote:
+                elif b == 0x0d and BINARY not in self.remote and not self.tn3270:
                     out.append(b)
                     self._state = _CR
                 else:
@@ -100,7 +118,10 @@ class TelnetProtocol:
                     out.append(b)
             elif st == _IAC:
                 if b == IAC:
-                    out.append(IAC)
+                    out += b"\xff\xff" if self.tn3270 else b"\xff"
+                    self._state = _DATA
+                elif b == EOR_CMD and self.tn3270:
+                    out += bytes([IAC, EOR_CMD])
                     self._state = _DATA
                 elif b in (DO, DONT, WILL, WONT):
                     self._verb = b
@@ -131,7 +152,7 @@ class TelnetProtocol:
     def _negotiate(self, verb: int, opt: int) -> None:
         # Reply only on a change of state, so negotiation cannot loop.
         if verb == DO:
-            if opt in WE_SUPPORT:
+            if opt in self.we_support:
                 if opt not in self.local:
                     self.local.add(opt)
                     if (WILL, opt) in self._asked:
@@ -148,7 +169,7 @@ class TelnetProtocol:
                 self.local.discard(opt)
                 self._send_cmd(WONT, opt)
         elif verb == WILL:
-            if opt in THEY_MAY:
+            if opt in self.they_may:
                 if opt not in self.remote:
                     self.remote.add(opt)
                     if (DO, opt) in self._asked:
@@ -171,18 +192,32 @@ class TelnetProtocol:
 
 class TelnetTransport(Transport):
     def __init__(self, host: str, port: int = 23, term_type: str = "VT220",
-                 timeout: float = 15.0):
+                 timeout: float = 15.0, tn3270: bool = False, tls: bool = False,
+                 tls_verify: bool = True):
         super().__init__()
         self.host, self.port, self.timeout = host, port, timeout
+        self.tls, self.tls_verify = tls, tls_verify
         self.sock: socket.socket | None = None
-        self.proto = TelnetProtocol(self._raw_send, term_type)
+        self.proto = TelnetProtocol(self._raw_send, term_type, tn3270=tn3270)
 
     def _raw_send(self, data: bytes) -> None:
         if self.sock:
             self.sock.sendall(data)
 
     def _open(self) -> None:
-        self.sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        if self.tls:
+            ctx = ssl.create_default_context()
+            if not self.tls_verify:
+                # Many mainframes use certificates from an in-house CA.
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+            try:
+                sock = ctx.wrap_socket(sock, server_hostname=self.host)
+            except (OSError, ssl.SSLError):
+                sock.close()
+                raise
+        self.sock = sock
         self.sock.settimeout(None)
         self.proto.cols, self.proto.rows = self.cols, self.rows
         self.proto.start()

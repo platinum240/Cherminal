@@ -14,7 +14,9 @@ def from_profile(profile: SessionProfile, ask_password=None, confirm_host_key=No
         return LocalTransport(profile.command, term=emu.term_type)
     if profile.transport == "telnet":
         from .telnet import TelnetTransport
-        return TelnetTransport(profile.host, profile.effective_port, term_type=emu.telnet_type)
+        return TelnetTransport(profile.host, profile.effective_port, term_type=emu.telnet_type,
+                               tn3270=emu.block_mode, tls=profile.tls,
+                               tls_verify=profile.tls_verify)
     if profile.transport == "ssh":
         from .ssh import SSHTransport
         return SSHTransport(profile.host, profile.effective_port, profile.username,

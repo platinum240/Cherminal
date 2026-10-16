@@ -50,7 +50,8 @@ it `UNVERIFIED` so it can be checked against real hardware or a manual.
 | Printing | Transparent / pass-through print (`CSI 5i`/`CSI 4i`, Wyse `ESC d#`) to a file or `lp` | Later phase |
 | Scripting | Expect-style login scripts | Later phase |
 | Hotspots | Clickable on-screen text (e.g. `F3=Exit`) that sends a key | Later phase |
-| IBM 3270 / 5250 | Block-mode emulations | Out of scope for now (separate protocol stack) |
+| IBM 3270 | Block-mode emulation over TN3270 (RFC 1576), 3278 models 2-5, 3279 colour, query replies | Present (`emulation/ibm3270.py`); TN3270E, printing and file transfer later |
+| IBM 5250 | Block-mode emulation for IBM i | Out of scope for now |
 
 ## Architecture
 

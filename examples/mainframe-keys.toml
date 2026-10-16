@@ -1,0 +1,12 @@
+# A shared mainframe keyboard. Save as ~/.config/cherminal/keymaps/mainframe-keys.toml
+# (or put it in a shared setup folder), then pick "mainframe-keys" as the keymap
+# in each TN3270 session. Starts from the built-in 3270 layout; change what differs.
+inherit = "ibm3270"
+
+[keys]
+"Ctrl+Enter" = "action:enter"       # some sites use right Ctrl as Enter
+"Enter" = "action:newline"          # ...and Enter as New line
+"Ctrl+C" = "action:clear"
+"Ctrl+R" = "action:reset"
+"Ctrl+1" = "action:pa1"
+"Ctrl+2" = "action:pa2"
