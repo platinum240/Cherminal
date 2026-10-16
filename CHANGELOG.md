@@ -10,6 +10,11 @@ Check what you are running with `cherminal --version` (or
 - Shared setup folders: sessions in `$CHERMINAL_SITE_DIR`, `cherminal-config/`
   next to the AppImage, or `/etc/xdg/cherminal/` appear on every machine.
 - `--list` shows where each session comes from.
+- IBM 3278/3279 models 2-5 over TN3270, with colour, extended highlighting,
+  PF1-24/PA1-3/Clear and field editing keys, and the 3270 status (keyboard
+  locked, insert, cursor position) in the status bar.
+- Telnet over TLS (port 992 by default), with an option for hosts whose
+  certificate comes from an in-house CA.
 
 ## 0.2.0
 

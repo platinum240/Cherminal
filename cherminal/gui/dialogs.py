@@ -156,6 +156,8 @@ class SessionEditor(QDialog):
         self.transport.currentTextChanged.connect(self._transport_changed)
         self.host = QLineEdit()
         self.port = QSpinBox(maximum=65535, specialValueText="default")
+        self.tls = QCheckBox("Use TLS (port 992 by default)")
+        self.tls_verify = QCheckBox("Check the host's certificate")
         self.username = QLineEdit()
         self.identity = QLineEdit()
         browse = QPushButton("Browse…")
@@ -179,6 +181,7 @@ class SessionEditor(QDialog):
         for label, widget, kinds in (
                 ("Name", self.name, None), ("Connection", self.transport, None),
                 ("Host", self.host, {"ssh", "telnet"}), ("Port", self.port, {"ssh", "telnet"}),
+                ("Security", self.tls, {"telnet"}), ("", self.tls_verify, {"telnet"}),
                 ("User", self.username, {"ssh"}), ("Private key", ident_row, {"ssh"}),
                 ("Command", self.command, {"local"}),
                 ("Device", self.serial_device, {"serial"}), ("Baud", self.baud, {"serial"}),
@@ -239,7 +242,9 @@ class SessionEditor(QDialog):
         f.addRow("Backspace sends", self.backspace)
         lay.addLayout(f)
         hint = QLabel("Values use \\e for Esc, \\r Enter, \\xHH bytes, ^A control keys, or "
-                      "action:paste / action:copy / action:break / action:macro:NAME.")
+                      "action:paste / action:copy / action:break / action:macro:NAME. "
+                      "IBM 3270 keys: action:enter, action:pf1-pf24, action:pa1-pa3, "
+                      "action:clear, action:reset and the others in the README.")
         hint.setWordWrap(True)
         hint.setFont(QFont(hint.font().family(), max(7, hint.font().pointSize() - 1)))
         lay.addWidget(QLabel("Key overrides for this session"))
@@ -268,6 +273,8 @@ class SessionEditor(QDialog):
         self._transport_changed(p.transport)
         self.host.setText(p.host)
         self.port.setValue(p.port)
+        self.tls.setChecked(p.tls)
+        self.tls_verify.setChecked(p.tls_verify)
         self.username.setText(p.username)
         self.identity.setText(p.identity_file)
         self.command.setText(p.command)
@@ -305,6 +312,7 @@ class SessionEditor(QDialog):
         return SessionProfile(
             name=self.name.text().strip() or "Untitled", transport=self.transport.currentText(),
             host=self.host.text().strip(), port=self.port.value(),
+            tls=self.tls.isChecked(), tls_verify=self.tls_verify.isChecked(),
             username=self.username.text().strip(), identity_file=self.identity.text().strip(),
             command=self.command.text().strip(), serial_device=self.serial_device.text().strip(),
             baud=int(self.baud.currentText()), data_bits=int(self.data_bits.currentText()),

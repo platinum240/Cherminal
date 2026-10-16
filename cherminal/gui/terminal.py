@@ -92,7 +92,7 @@ class TerminalWidget(QWidget):
         super().resizeEvent(event)
 
     def _apply_resize(self) -> None:
-        if self.resize_mode == "scale":
+        if self.resize_mode == "scale" or self.session.emulation.fixed_size:
             self._fit_font()
             return
         cols = max(2, self.width() // self.cw)
@@ -149,6 +149,10 @@ class TerminalWidget(QWidget):
             box["result"] = answer == QMessageBox.StandardButton.Yes
 
     def _on_update(self) -> None:
+        s = self.session.screen
+        if (s.cols, s.rows) != getattr(self, "_last_grid", (s.cols, s.rows)):
+            self._apply_resize()            # the host changed the screen size
+        self._last_grid = (s.cols, s.rows)
         if not self._repaint.isActive():
             self._repaint.start()
         title = self.session.screen.title
@@ -158,8 +162,8 @@ class TerminalWidget(QWidget):
         self.status_changed.emit(self.status_text())
 
     def _on_closed(self, reason: str) -> None:
+        self.session.notice(reason)
         self.status_changed.emit(f"Disconnected: {reason}")
-        self.session.feed(f"\r\n[Cherminal: {reason}]\r\n".encode(self.session.encoding, "replace"))
         self.update()
 
     def status_text(self) -> str:
@@ -168,7 +172,9 @@ class TerminalWidget(QWidget):
         where = {"local": "local shell", "serial": p.serial_device}.get(
             p.transport, f"{p.host}:{p.effective_port}")
         state = "Connected" if self.session.connected else "Not connected"
-        return f"{state} · {p.transport.upper()} {where} · {p.emulation.upper()} · {s.cols}×{s.rows}"
+        text = f"{state} · {p.transport.upper()} {where} · {p.emulation.upper()} · {s.cols}×{s.rows}"
+        oia = getattr(self.session.emulation, "status", "")
+        return f"{text} · {oia}" if oia else text
 
     # --------------------------------------------------------------- input
 
@@ -187,6 +193,8 @@ class TerminalWidget(QWidget):
             handled = bool(text) and (self.session.send_text(text) or True)
         if handled:
             self.clear_selection()
+            if self.session.emulation.block_mode:
+                self._on_update()           # local edit: repaint and refresh the OIA
         else:
             super().keyPressEvent(event)
 

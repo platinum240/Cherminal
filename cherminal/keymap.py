@@ -208,6 +208,27 @@ def _wyse() -> dict[str, str]:
     return m
 
 
+def _ibm3270() -> dict[str, str]:
+    """PC-style layout for a 3270 keyboard, close to common PC 3270 emulators."""
+    m = {
+        "Enter": "action:enter", "KeypadEnter": "action:enter",
+        "Shift+Enter": "action:newline", "Tab": "action:tab", "Shift+Tab": "action:backtab",
+        "Up": "action:up", "Down": "action:down", "Left": "action:left",
+        "Right": "action:right", "Home": "action:home", "End": "action:field-end",
+        "Backspace": "action:erase", "Delete": "action:delete", "Insert": "action:insert",
+        "Ctrl+End": "action:erase-eof", "Ctrl+Delete": "action:erase-input",
+        "Escape": "action:reset", "Pause": "action:clear", "Ctrl+Pause": "action:clear",
+        "PageUp": "action:pf7", "PageDown": "action:pf8",
+        "Alt+F1": "action:pa1", "Alt+F2": "action:pa2", "Alt+F3": "action:pa3",
+    }
+    for i in range(1, 13):
+        m[f"F{i}"] = f"action:pf{i}"
+        m[f"Shift+F{i}"] = f"action:pf{i + 12}"
+    for i in range(13, 25):
+        m[f"F{i}"] = f"action:pf{i}"
+    return m
+
+
 COMMON = {
     "Ctrl+Shift+C": "action:copy",
     "Ctrl+Shift+V": "action:paste",
@@ -219,7 +240,7 @@ COMMON = {
 
 BUILTIN: dict[str, dict[str, str]] = {
     "vt100": _vt100(), "vt220": _vt220(), "xterm": _xterm(), "linux": _linux(),
-    "ansi": _ansi(), "wyse": _wyse(),
+    "ansi": _ansi(), "wyse": _wyse(), "ibm3270": _ibm3270(),
 }
 
 

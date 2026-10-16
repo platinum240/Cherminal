@@ -68,6 +68,10 @@ class Session:
         with self.lock:
             self.emulation.feed(data)
 
+    def notice(self, text: str) -> None:
+        with self.lock:
+            self.emulation.notice(text)
+
     def _reply(self, data: bytes) -> None:
         if self.transport:
             self.transport.write(data)
@@ -75,6 +79,10 @@ class Session:
     # --------------------------------------------------------------- input
 
     def send_text(self, text: str) -> None:
+        if self.emulation.block_mode:
+            with self.lock:
+                self.emulation.type_text(text)   # edits the screen; Enter sends it
+            return
         data = text.encode(self.encoding, errors="replace")
         if self.profile.local_echo:
             self.feed(data)
@@ -83,6 +91,9 @@ class Session:
 
     def paste(self, text: str) -> None:
         text = text.replace("\r\n", "\r").replace("\n", "\r")
+        if self.emulation.block_mode:
+            self.send_text(text.rstrip("\r"))
+            return
         if self.emulation.bracketed_paste:
             text = "\x1b[200~" + text + "\x1b[201~"
         self.send_text(text)
@@ -97,6 +108,8 @@ class Session:
             if not text:
                 return False
             if name.startswith("Alt+") and len(text) == 1:
+                if self.emulation.block_mode:
+                    return False
                 text = "\x1b" + text  # Alt as Meta
             self.send_text(text)
             return True
@@ -106,6 +119,8 @@ class Session:
     def run_binding(self, binding: Binding, depth: int = 0) -> None:
         if binding.kind == "send":
             self.send_text(binding.value)
+        elif self.emulation.block_mode and self._block_action(binding.value):
+            pass
         elif binding.value.startswith("macro:"):
             if depth < 8:  # macros may chain, but not loop forever
                 self.run_macro(binding.value[len("macro:"):], depth + 1)
@@ -118,11 +133,17 @@ class Session:
         else:
             self.on_action(binding.value)
 
+    def _block_action(self, name: str) -> bool:
+        with self.lock:
+            return self.emulation.do_action(name)
+
     def run_macro(self, name: str, depth: int = 0) -> None:
         if name in self.profile.macros:
             self.run_binding(Binding.parse(self.profile.macros[name]), depth)
 
     def resize(self, cols: int, rows: int) -> None:
+        if self.emulation.fixed_size:
+            return
         with self.lock:
             self.screen.resize(cols, rows)
         if self.transport:

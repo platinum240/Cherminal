@@ -40,6 +40,8 @@ class SessionProfile:
     transport: str = "ssh"
     host: str = ""
     port: int = 0                     # 0 = transport default
+    tls: bool = False                 # telnet: TLS (e.g. TN3270 on port 992)
+    tls_verify: bool = True           # check the host's certificate
     username: str = ""
     identity_file: str = ""           # SSH private key
     command: str = ""                 # local: program to run (default $SHELL)
@@ -78,9 +80,13 @@ class SessionProfile:
             raise ValueError("enter_sends must be cr, crlf or lf")
         if self.resize_mode not in ("scale", "grow"):
             raise ValueError("resize_mode must be scale or grow")
+        if emulation.EMULATIONS[self.emulation].block_mode and self.transport != "telnet":
+            raise ValueError(f"{self.emulation} needs a telnet (TN3270) connection")
 
     @property
     def effective_port(self) -> int:
+        if not self.port and self.transport == "telnet" and self.tls:
+            return 992
         return self.port or DEFAULT_PORTS.get(self.transport, 0)
 
     @property
@@ -287,6 +293,10 @@ class ProfileStore:
         """Built-in table -> named keymap file -> profile settings -> profile [keys]."""
         default = emulation.EMULATIONS[profile.emulation].keymap
         km = self.load_keymap_layers(profile.keymap or default)
+        if emulation.EMULATIONS[profile.emulation].block_mode:
+            # 3270 keys are actions, not bytes; Enter/Backspace settings don't apply.
+            km.update(profile.keys)
+            return km
         if profile.backspace == "bs":
             km.update({"Backspace": "^H"})
         elif profile.backspace == "del":
