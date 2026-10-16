@@ -73,10 +73,14 @@ class SSHTransport(Transport):
             except paramiko.AuthenticationException:
                 if attempt == 3:
                     raise OSError("authentication failed")
+                if self._closing:
+                    raise OSError("closed")
                 password = self.ask_password(f"Password for {self.username}@{self.host}:")
                 if password is None:
                     raise OSError("authentication cancelled")
         self.client = client
+        if self._closing:
+            return
         self.chan = client.invoke_shell(term=self.term, width=self.cols, height=self.rows)
 
     def _read(self) -> bytes:
