@@ -19,9 +19,12 @@ from .terminal import TerminalWidget
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, store: ProfileStore):
+    def __init__(self, store: ProfileStore, limited: bool = False):
         super().__init__()
         self.store = store
+        # Limited: users can only use the sessions they are given; no editing,
+        # new connections or local shell.
+        self.limited = limited
         self.setWindowTitle(f"Cherminal {__version__}")
         self.tabs = QTabWidget(tabsClosable=True, movable=True, documentMode=True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
@@ -48,13 +51,14 @@ class MainWindow(QMainWindow):
     def _build_menus(self) -> None:
         mb = self.menuBar()
         f = mb.addMenu("&File")
-        self._action(f, "&Sessions…", self.open_manager, "Ctrl+Shift+O")
-        self._action(f, "&Quick connect…", self.quick_connect, "Ctrl+Shift+N")
-        self._action(f, "&Local shell", lambda: self.open_session(
-            SessionProfile(name="Local shell", transport="local", emulation="xterm")),
-            "Ctrl+Shift+T")
-        f.addSeparator()
-        self._action(f, "&Edit this session…", self.edit_current)
+        if not self.limited:
+            self._action(f, "&Sessions…", self.open_manager, "Ctrl+Shift+O")
+            self._action(f, "&Quick connect…", self.quick_connect, "Ctrl+Shift+N")
+            self._action(f, "&Local shell", lambda: self.open_session(
+                SessionProfile(name="Local shell", transport="local", emulation="xterm")),
+                "Ctrl+Shift+T")
+            f.addSeparator()
+            self._action(f, "&Edit this session…", self.edit_current)
         self._action(f, "&Close tab", lambda: self.close_tab(self.tabs.currentIndex()),
                      "Ctrl+Shift+W")
         self._action(f, "E&xit", self.close, "Ctrl+Shift+Q")
@@ -138,7 +142,7 @@ class MainWindow(QMainWindow):
         term.deleteLater()
 
     def open_manager(self) -> None:
-        dlg = SessionManager(self.store, self)
+        dlg = SessionManager(self.store, self, limited=self.limited)
         if dlg.exec() and dlg.chosen:
             self.open_session(dlg.chosen)
 
@@ -192,10 +196,11 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
-def run(profiles: list[SessionProfile], store: ProfileStore, show_manager: bool) -> int:
+def run(profiles: list[SessionProfile], store: ProfileStore, show_manager: bool,
+        limited: bool = False) -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("Cherminal")
-    win = MainWindow(store)
+    win = MainWindow(store, limited=limited)
     # Every way out (last window closed, Ctrl+C, kill, logout) closes the
     # connections cleanly rather than leaving it to process teardown.
     app.aboutToQuit.connect(win.disconnect_all)

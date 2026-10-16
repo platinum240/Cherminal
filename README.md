@@ -143,6 +143,22 @@ field, `Insert`, and the cursor's row/column.
 Not yet supported: TN3270E (LU names, SysReq/Attn), 3287 printing, file
 transfer (IND$FILE), and 5250 (IBM i).
 
+## Limited mode for shared workstations
+
+```sh
+./Cherminal-x86_64.AppImage --limited "Mainframe A" "Mainframe B"
+```
+
+`--limited` opens the named sessions with a File menu offering only
+**Close tab** and **Exit**. Users can't open the session list, create or
+edit sessions, use Quick connect or start a local shell, and those menu
+shortcuts are gone too. Edit, View, Session and Help stay. Started with no
+session names, it shows a list of the available sessions with only a
+Connect button (local shell sessions are left out).
+
+Put the command in the launcher or desktop icon the users start, for
+example together with a shared setup folder below.
+
 ## Sharing sessions across machines
 
 A session file (`.cherminal`) holds one or more connections together with

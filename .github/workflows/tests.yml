@@ -13,5 +13,6 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - run: sudo apt-get install -y -q libegl1 libxkbcommon0   # Qt offscreen for GUI tests
       - run: pip install -e '.[dev]'
       - run: pytest -q

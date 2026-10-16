@@ -9,6 +9,7 @@
     cherminal --list                  print saved sessions
     cherminal --export site.cherminal "Mainframe A" "Mainframe B"
     cherminal --import site.cherminal
+    cherminal --limited "Mainframe A"  locked down: File menu is Close tab / Exit only
 """
 
 from __future__ import annotations
@@ -65,6 +66,9 @@ def main(argv: list[str] | None = None) -> int:
                          "to one file, then exit")
     ap.add_argument("--import", dest="import_", metavar="FILE", action="append",
                     help="add the sessions and keymaps in FILE, replacing same-named ones")
+    ap.add_argument("--limited", action="store_true",
+                    help="lock the menus: no session editing, new connections or local "
+                         "shell; File offers only Close tab and Exit")
     ap.add_argument("--version", action="version", version=f"cherminal {__version__}")
     args = ap.parse_args(argv)
 
@@ -95,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     from .gui.app import run
-    return run(profiles, store, show_manager=not profiles)
+    return run(profiles, store, show_manager=not profiles, limited=args.limited)
 
 
 if __name__ == "__main__":
