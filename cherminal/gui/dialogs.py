@@ -211,11 +211,15 @@ class SessionEditor(QDialog):
         self.local_echo = QCheckBox("Echo typed characters locally")
         self.enter_sends = QComboBox()
         self.enter_sends.addItems(["cr", "crlf", "lf"])
+        self.resize_mode = QComboBox()
+        self.resize_mode.addItem("Scale the text to fit", "scale")
+        self.resize_mode.addItem("Add rows and columns", "grow")
         for label, widget in (("Emulation", self.emulation), ("Character set", self.encoding),
                               ("Columns", self.cols), ("Rows", self.rows),
                               ("Scrollback lines", self.scrollback), ("Font", self.font_family),
                               ("Font size", self.font_size), ("Colours", self.scheme),
                               ("Answerback", self.answerback), ("Enter sends", self.enter_sends),
+                              ("When the window resizes", self.resize_mode),
                               ("", self.local_echo)):
             f.addRow(label, widget)
         return w
@@ -284,6 +288,7 @@ class SessionEditor(QDialog):
         self.answerback.setText(p.answerback)
         self.local_echo.setChecked(p.local_echo)
         self.enter_sends.setCurrentText(p.enter_sends)
+        self.resize_mode.setCurrentIndex(max(0, self.resize_mode.findData(p.resize_mode)))
         self.keymap.setCurrentIndex(max(0, self.keymap.findData(p.keymap)))
         self.backspace.setCurrentIndex(max(0, self.backspace.findData(p.backspace)))
         self.keys.set_items(p.keys)
@@ -311,7 +316,8 @@ class SessionEditor(QDialog):
             font_size=self.font_size.value(), color_scheme=self.scheme.currentText(),
             keymap=self.keymap.currentData(), backspace=self.backspace.currentData(),
             answerback=self.answerback.text(), local_echo=self.local_echo.isChecked(),
-            enter_sends=self.enter_sends.currentText(), keys=keys, macros=self.macros.items())
+            enter_sends=self.enter_sends.currentText(),
+            resize_mode=self.resize_mode.currentData(), keys=keys, macros=self.macros.items())
 
     def _accept(self) -> None:
         try:

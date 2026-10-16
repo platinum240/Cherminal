@@ -62,6 +62,8 @@ class SessionProfile:
     answerback: str = ""
     local_echo: bool = False
     enter_sends: str = "cr"           # cr | crlf | lf
+    resize_mode: str = "scale"        # scale: keep cols x rows, fit the font
+                                      # grow: keep the font, add rows/columns
     keys: dict[str, str] = field(default_factory=dict)
     macros: dict[str, str] = field(default_factory=dict)
 
@@ -74,6 +76,8 @@ class SessionProfile:
             raise ValueError("backspace must be 'del' or 'bs'")
         if self.enter_sends not in ("cr", "crlf", "lf"):
             raise ValueError("enter_sends must be cr, crlf or lf")
+        if self.resize_mode not in ("scale", "grow"):
+            raise ValueError("resize_mode must be scale or grow")
 
     @property
     def effective_port(self) -> int:
