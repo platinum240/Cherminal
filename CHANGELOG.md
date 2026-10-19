@@ -10,6 +10,8 @@ Check what you are running with `cherminal --version` (or
 - High-contrast colour schemes, custom text/background/cursor colours,
   replaceable host colours, and a minimum contrast (WCAG AA/AAA) applied to
   every colour the host uses. New Colours tab with a live preview.
+- Keyboard map…: remap keys by clicking them on an on-screen keyboard, with
+  the Shift/Ctrl/Alt layers and the 3270 actions to choose from.
 
 ## 0.4.0
 

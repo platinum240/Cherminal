@@ -93,6 +93,16 @@ F12 = "^AK\\r"
 
 See `examples/` for a session and a keymap.
 
+### Remapping keys on screen
+
+In a session's Keyboard tab, **Keyboard map…** opens a picture of the
+keyboard. Click a key (or **Find a key by pressing it…**), then pick what it
+sends: a 3270 or terminal action, a macro, or your own text. Click the
+Shift, Ctrl or Alt keys on the picture to map those layers. Keys you changed are
+orange, keys the emulation already maps are blue. The changes are saved in
+the session, so they travel with it when it is exported or shared; **Save
+as keymap…** keeps them as a named keymap other sessions can use.
+
 ### Copying another emulator's keyboard
 
 ```sh
