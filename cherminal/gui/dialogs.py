@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QKeyEvent
-from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
-                             QFontComboBox, QFormLayout, QHBoxLayout, QHeaderView, QLabel,
+from dataclasses import replace
+
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QKeyEvent, QPainter
+from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox,
+                             QFileDialog, QFontComboBox, QFormLayout, QGridLayout, QHBoxLayout,
+                             QHeaderView, QLabel,
                              QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
                              QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout,
                              QWidget)
@@ -13,7 +16,8 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QF
 from .. import emulation
 from ..config import BUNDLE_SUFFIX, TRANSPORTS, ProfileStore, SessionProfile
 from ..keymap import Binding, normalize_key
-from .colors import SCHEMES
+from .colors import (PALETTE_NAMES, SCHEMES, contrast, ensure_contrast, palette_256,
+                     parse_hex, resolve, to_hex)
 from .keys import key_name
 
 ENCODINGS = ["", "utf-8", "latin-1", "cp437", "cp850", "cp852", "cp866", "cp1250", "cp1251",
@@ -109,6 +113,134 @@ class _PairTable(QWidget):
         return out
 
 
+class ColorButton(QPushButton):
+    """A swatch that opens a colour picker. Empty value means "use the default"."""
+
+    changed = pyqtSignal()
+
+    def __init__(self, default: tuple[int, int, int] = (0, 0, 0), label: str = ""):
+        super().__init__()
+        self.value = ""
+        self.default = default
+        self.label = label
+        self.setMinimumWidth(110)
+        self.clicked.connect(self._pick)
+        self._show()
+
+    def set_value(self, value: str, default=None) -> None:
+        self.value = value
+        if default is not None:
+            self.default = default
+        self._show()
+
+    def rgb(self) -> tuple[int, int, int]:
+        return parse_hex(self.value) if self.value else self.default
+
+    def _show(self) -> None:
+        r, g, b = self.rgb()
+        ink = "#000000" if contrast((r, g, b), (0, 0, 0)) > contrast((r, g, b), (255, 255, 255)) \
+            else "#ffffff"
+        self.setText(self.value or "default")
+        self.setStyleSheet(f"background: {to_hex((r, g, b))}; color: {ink}")
+        self.setToolTip(f"{self.label}: {to_hex((r, g, b))}" if self.label else to_hex((r, g, b)))
+
+    def _pick(self) -> None:
+        color = QColorDialog.getColor(QColor(*self.rgb()), self, self.label or "Colour")
+        if color.isValid():
+            self.set_value(color.name())
+            self.changed.emit()
+
+    def reset(self) -> None:
+        self.set_value("")
+        self.changed.emit()
+
+
+class ColorPreview(QWidget):
+    """Sample text in the colours a session will use, contrast rules applied."""
+
+    SAMPLE = [("Normal text  ", None, False), ("Bold", None, True)]
+
+    def __init__(self):
+        super().__init__()
+        self.colors = None
+        self.setMinimumHeight(110)
+
+    def set_colors(self, colors) -> None:
+        self.colors = colors
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        c = self.colors
+        if c is None:
+            return
+        p = QPainter(self)
+        p.fillRect(self.rect(), QColor(*c.bg))
+        font = QFont("Monospace")
+        font.setStyleHint(QFont.StyleHint.TypeWriter)
+        p.setFont(font)
+        line = p.fontMetrics().height()
+
+        def ink(rgb):
+            return QColor(*ensure_contrast(rgb, c.bg, c.min_contrast))
+
+        x = 8
+        for text, idx, bold in self.SAMPLE:
+            font.setBold(bold)
+            p.setFont(font)
+            p.setPen(ink(c.bold if bold and c.bold else c.fg))
+            p.drawText(x, line, text)
+            x += p.fontMetrics().horizontalAdvance(text)
+        font.setBold(False)
+        p.setFont(font)
+        for row, base in enumerate((0, 8)):
+            x = 8
+            for i in range(8):
+                name = PALETTE_NAMES[base + i].replace("bright-", "")
+                p.setPen(ink(c.palette[base + i]))
+                p.drawText(x, line * (row + 2) + 4, name)
+                x += p.fontMetrics().horizontalAdvance(name + " ")
+        ratio = contrast(c.fg, c.bg)
+        grade = "AAA" if ratio >= 7 else "AA" if ratio >= 4.5 else "below AA"
+        p.setPen(ink(c.fg))
+        p.drawText(8, line * 4 + 8, f"Text contrast {ratio:.1f}:1 ({grade})")
+        p.fillRect(8, line * 4 + 14, 10, line, QColor(*c.cursor))
+        p.end()
+
+
+class LoginDialog(QDialog):
+    """User name and password together, for hosts where the login isn't the
+    workstation's own."""
+
+    def __init__(self, host: str, user: str = "", error: str = "", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Log in to {host}")
+        self.user = QLineEdit(user)
+        self.password = QLineEdit(echoMode=QLineEdit.EchoMode.Password)
+        form = QFormLayout(self)
+        if error:
+            note = QLabel(error)
+            note.setStyleSheet("color: #c00000; font-weight: bold")
+            form.addRow(note)
+        form.addRow("User name", self.user)
+        form.addRow("Password", self.password)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                                   | QDialogButtonBox.StandardButton.Cancel)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Log in")
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+        (self.password if user else self.user).setFocus()
+
+    def _accept(self) -> None:
+        if self.user.text().strip():
+            self.accept()
+        else:
+            self.user.setFocus()
+
+    def credentials(self) -> tuple[str, str]:
+        return self.user.text().strip(), self.password.text()
+
+
 class SessionEditor(QDialog):
     """Edit a profile. ``connect_only`` turns it into a Quick Connect dialog."""
 
@@ -122,6 +254,7 @@ class SessionEditor(QDialog):
         tabs = QTabWidget()
         tabs.addTab(self._connection_tab(), "Connection")
         tabs.addTab(self._terminal_tab(), "Terminal")
+        tabs.addTab(self._colours_tab(), "Colours")
         tabs.addTab(self._keyboard_tab(), "Keyboard && macros")
         buttons = QDialogButtonBox()
         if connect_only:
@@ -159,6 +292,10 @@ class SessionEditor(QDialog):
         self.tls = QCheckBox("Use TLS (port 992 by default)")
         self.tls_verify = QCheckBox("Check the host's certificate")
         self.username = QLineEdit()
+        self.ask_login = QCheckBox("Ask for user name and password when connecting")
+        self.ask_login.setToolTip("For users whose login on this host isn't their "
+                                  "workstation login. The user name above is filled in "
+                                  "as a suggestion.")
         self.identity = QLineEdit()
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse_key)
@@ -182,7 +319,8 @@ class SessionEditor(QDialog):
                 ("Name", self.name, None), ("Connection", self.transport, None),
                 ("Host", self.host, {"ssh", "telnet"}), ("Port", self.port, {"ssh", "telnet"}),
                 ("Security", self.tls, {"telnet"}), ("", self.tls_verify, {"telnet"}),
-                ("User", self.username, {"ssh"}), ("Private key", ident_row, {"ssh"}),
+                ("User", self.username, {"ssh"}), ("Login", self.ask_login, {"ssh"}),
+                ("Private key", ident_row, {"ssh"}),
                 ("Command", self.command, {"local"}),
                 ("Device", self.serial_device, {"serial"}), ("Baud", self.baud, {"serial"}),
                 ("Data bits", self.data_bits, {"serial"}), ("Parity", self.parity, {"serial"}),
@@ -220,12 +358,83 @@ class SessionEditor(QDialog):
         for label, widget in (("Emulation", self.emulation), ("Character set", self.encoding),
                               ("Columns", self.cols), ("Rows", self.rows),
                               ("Scrollback lines", self.scrollback), ("Font", self.font_family),
-                              ("Font size", self.font_size), ("Colours", self.scheme),
+                              ("Font size", self.font_size),
                               ("Answerback", self.answerback), ("Enter sends", self.enter_sends),
                               ("When the window resizes", self.resize_mode),
                               ("", self.local_echo)):
             f.addRow(label, widget)
         return w
+
+    def _colours_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        f = QFormLayout()
+        self.fg_color = ColorButton(label="Text colour")
+        self.bg_color = ColorButton(label="Background")
+        self.cursor_color = ColorButton(label="Cursor")
+        self.min_contrast = QComboBox()
+        for label, value in (("Scheme default", 0.0), ("Off", 1.0),
+                             ("4.5:1 (WCAG AA)", 4.5), ("7:1 (WCAG AAA, high contrast)", 7.0)):
+            self.min_contrast.addItem(label, value)
+        self.min_contrast.setToolTip("Lightens or darkens any colour the host uses that is "
+                                     "too faint against the background.")
+        f.addRow("Scheme", self.scheme)
+        for label, button in (("Text", self.fg_color), ("Background", self.bg_color),
+                              ("Cursor", self.cursor_color)):
+            row = QHBoxLayout()
+            row.addWidget(button)
+            reset = QPushButton("Use scheme's")
+            reset.clicked.connect(button.reset)
+            row.addWidget(reset)
+            row.addStretch()
+            f.addRow(label, row)
+        f.addRow("Minimum contrast", self.min_contrast)
+        lay.addLayout(f)
+        lay.addWidget(QLabel("Host colours (click to change)"))
+        grid = QGridLayout()
+        defaults = palette_256()
+        self.palette_buttons = {}
+        for i, name in enumerate(PALETTE_NAMES):
+            b = ColorButton(defaults[i], label=name)
+            b.setMinimumWidth(60)
+            b.setToolTip(name)
+            self.palette_buttons[name] = b
+            grid.addWidget(QLabel(name), (i // 8) * 2, i % 8)
+            grid.addWidget(b, (i // 8) * 2 + 1, i % 8)
+            b.changed.connect(self._update_preview)
+        lay.addLayout(grid)
+        reset_pal = QPushButton("Reset host colours")
+        reset_pal.clicked.connect(self._reset_palette)
+        lay.addWidget(reset_pal, alignment=Qt.AlignmentFlag.AlignLeft)
+        self.preview = ColorPreview()
+        lay.addWidget(self.preview)
+        lay.addStretch()
+        for b in (self.fg_color, self.bg_color, self.cursor_color):
+            b.changed.connect(self._update_preview)
+        self.scheme.currentTextChanged.connect(self._update_preview)
+        self.min_contrast.currentIndexChanged.connect(self._update_preview)
+        return w
+
+    def _reset_palette(self) -> None:
+        for b in self.palette_buttons.values():
+            b.set_value("")
+        self._update_preview()
+
+    def _colour_settings(self) -> dict:
+        return dict(
+            color_scheme=self.scheme.currentText(), fg_color=self.fg_color.value,
+            bg_color=self.bg_color.value, cursor_color=self.cursor_color.value,
+            min_contrast=self.min_contrast.currentData(),
+            palette={n: b.value for n, b in self.palette_buttons.items() if b.value})
+
+    def _update_preview(self, *_) -> None:
+        if not hasattr(self, "preview"):
+            return
+        sch = SCHEMES.get(self.scheme.currentText(), SCHEMES["classic"])
+        self.fg_color.set_value(self.fg_color.value, sch.fg)
+        self.bg_color.set_value(self.bg_color.value, sch.bg)
+        self.cursor_color.set_value(self.cursor_color.value, sch.cursor)
+        self.preview.set_colors(resolve(replace(SessionProfile(), **self._colour_settings())))
 
     def _keyboard_tab(self) -> QWidget:
         w = QWidget()
@@ -276,6 +485,7 @@ class SessionEditor(QDialog):
         self.tls.setChecked(p.tls)
         self.tls_verify.setChecked(p.tls_verify)
         self.username.setText(p.username)
+        self.ask_login.setChecked(p.ask_login)
         self.identity.setText(p.identity_file)
         self.command.setText(p.command)
         self.serial_device.setText(p.serial_device)
@@ -292,6 +502,13 @@ class SessionEditor(QDialog):
         self.font_family.setCurrentFont(QFont(p.font_family))
         self.font_size.setValue(p.font_size)
         self.scheme.setCurrentText(p.color_scheme)
+        self.fg_color.set_value(p.fg_color)
+        self.bg_color.set_value(p.bg_color)
+        self.cursor_color.set_value(p.cursor_color)
+        self.min_contrast.setCurrentIndex(max(0, self.min_contrast.findData(float(p.min_contrast))))
+        for name, b in self.palette_buttons.items():
+            b.set_value(p.palette.get(name, ""))
+        self._update_preview()
         self.answerback.setText(p.answerback)
         self.local_echo.setChecked(p.local_echo)
         self.enter_sends.setCurrentText(p.enter_sends)
@@ -313,7 +530,8 @@ class SessionEditor(QDialog):
             name=self.name.text().strip() or "Untitled", transport=self.transport.currentText(),
             host=self.host.text().strip(), port=self.port.value(),
             tls=self.tls.isChecked(), tls_verify=self.tls_verify.isChecked(),
-            username=self.username.text().strip(), identity_file=self.identity.text().strip(),
+            username=self.username.text().strip(), ask_login=self.ask_login.isChecked(),
+            identity_file=self.identity.text().strip(),
             command=self.command.text().strip(), serial_device=self.serial_device.text().strip(),
             baud=int(self.baud.currentText()), data_bits=int(self.data_bits.currentText()),
             parity=self.parity.currentText(), stop_bits=float(self.stop_bits.currentText()),
@@ -321,7 +539,7 @@ class SessionEditor(QDialog):
             encoding=self.encoding.currentText().strip(), cols=self.cols.value(),
             rows=self.rows.value(), scrollback=self.scrollback.value(),
             font_family=self.font_family.currentFont().family(),
-            font_size=self.font_size.value(), color_scheme=self.scheme.currentText(),
+            font_size=self.font_size.value(), **self._colour_settings(),
             keymap=self.keymap.currentData(), backspace=self.backspace.currentData(),
             answerback=self.answerback.text(), local_echo=self.local_echo.isChecked(),
             enter_sends=self.enter_sends.currentText(),

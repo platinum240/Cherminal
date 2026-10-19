@@ -7,7 +7,8 @@ from ..emulation import EMULATIONS
 from .base import Transport
 
 
-def from_profile(profile: SessionProfile, ask_password=None, confirm_host_key=None) -> Transport:
+def from_profile(profile: SessionProfile, ask_password=None, confirm_host_key=None,
+                 ask_login=None) -> Transport:
     emu = EMULATIONS[profile.emulation]
     if profile.transport == "local":
         from .local import LocalTransport
@@ -22,7 +23,8 @@ def from_profile(profile: SessionProfile, ask_password=None, confirm_host_key=No
         return SSHTransport(profile.host, profile.effective_port, profile.username,
                             profile.identity_file, term=emu.term_type,
                             known_hosts=config_dir() / "known_hosts",
-                            ask_password=ask_password, confirm_host_key=confirm_host_key)
+                            ask_password=ask_password, confirm_host_key=confirm_host_key,
+                            ask_login=ask_login if profile.ask_login else None)
     if profile.transport == "serial":
         from .serial import SerialTransport
         return SerialTransport(profile.serial_device, profile.baud, profile.data_bits,

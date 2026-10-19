@@ -34,11 +34,12 @@ class Session:
 
     # -------------------------------------------------------------- wiring
 
-    def connect(self, ask_password=None, confirm_host_key=None,
+    def connect(self, ask_password=None, confirm_host_key=None, ask_login=None,
                 on_update: Callable[[], None] = lambda: None,
                 on_closed: Callable[[str], None] = lambda reason: None) -> None:
         if self.transport is None:
-            self.transport = from_profile(self.profile, ask_password, confirm_host_key)
+            self.transport = from_profile(self.profile, ask_password, confirm_host_key,
+                                          ask_login)
         t = self.transport
 
         def opened():
