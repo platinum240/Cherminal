@@ -3,6 +3,11 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.6.0
+
+- Keyboard map…: remap keys by clicking them on an on-screen keyboard, with
+  the Shift/Ctrl/Alt layers and the 3270 actions to choose from.
+
 ## 0.5.0
 
 - SSH sessions can ask for user name and password together when connecting,

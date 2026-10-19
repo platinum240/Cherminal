@@ -450,6 +450,10 @@ class SessionEditor(QDialog):
         f.addRow("Keymap", self.keymap)
         f.addRow("Backspace sends", self.backspace)
         lay.addLayout(f)
+        visual = QPushButton("Keyboard map…")
+        visual.setToolTip("Remap keys by clicking them on a picture of the keyboard")
+        visual.clicked.connect(self._open_keyboard_map)
+        lay.addWidget(visual, alignment=Qt.AlignmentFlag.AlignLeft)
         hint = QLabel("Values use \\e for Esc, \\r Enter, \\xHH bytes, ^A control keys, or "
                       "action:paste / action:copy / action:break / action:macro:NAME. "
                       "IBM 3270 keys: action:enter, action:pf1-pf24, action:pa1-pa3, "
@@ -464,6 +468,21 @@ class SessionEditor(QDialog):
         lay.addWidget(self.macros)
         lay.addWidget(hint)
         return w
+
+    def _open_keyboard_map(self) -> None:
+        from .keyboard import KeyboardEditor
+        try:
+            profile = replace(self._build(), keys={})
+            base = self.store.build_keymap(profile)
+        except (ValueError, LookupError) as e:
+            QMessageBox.warning(self, "Keyboard map", str(e))
+            return
+        emu = emulation.EMULATIONS[profile.emulation]
+        dlg = KeyboardEditor(base, self.keys.items(), block_mode=emu.block_mode,
+                             macros=list(self.macros.items()), store=self.store,
+                             base_name=profile.keymap or emu.keymap, parent=self)
+        if dlg.exec():
+            self.keys.set_items(dlg.overrides)
 
     # ------------------------------------------------------------ data
 
