@@ -3,6 +3,11 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.4.0
+
+- `--limited`: the File menu offers only Close tab and Exit, with no way to
+  open, create or edit sessions or start a local shell.
+
 ## 0.3.0
 
 - Session files (`.cherminal`) carry connections with the keymaps they use.
