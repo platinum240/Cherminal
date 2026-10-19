@@ -3,6 +3,14 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.5.0
+
+- SSH sessions can ask for user name and password together when connecting,
+  for host logins that differ from the workstation login.
+- High-contrast colour schemes, custom text/background/cursor colours,
+  replaceable host colours, and a minimum contrast (WCAG AA/AAA) applied to
+  every colour the host uses. New Colours tab with a live preview.
+
 ## 0.4.0
 
 - `--limited`: the File menu offers only Close tab and Exit, with no way to

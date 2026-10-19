@@ -24,6 +24,17 @@ TRANSPORTS = ("ssh", "telnet", "serial", "local")
 DEFAULT_PORTS = {"ssh": 22, "telnet": 23}
 
 
+PALETTE_NAMES = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+                 "bright-black", "bright-red", "bright-green", "bright-yellow",
+                 "bright-blue", "bright-magenta", "bright-cyan", "bright-white"]
+
+
+def _check_hex(value: str) -> None:
+    v = value.lstrip("#")
+    if not value.startswith("#") or len(v) != 6 or any(c not in "0123456789abcdefABCDEF" for c in v):
+        raise ValueError(f"colour must look like #rrggbb, not {value!r}")
+
+
 def config_dir() -> Path:
     base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
     return Path(base) / "cherminal"
@@ -44,6 +55,7 @@ class SessionProfile:
     tls_verify: bool = True           # check the host's certificate
     username: str = ""
     identity_file: str = ""           # SSH private key
+    ask_login: bool = False           # SSH: ask for user name and password on connect
     command: str = ""                 # local: program to run (default $SHELL)
     serial_device: str = "/dev/ttyUSB0"
     baud: int = 9600
@@ -59,6 +71,11 @@ class SessionProfile:
     font_family: str = "Monospace"
     font_size: int = 11
     color_scheme: str = "classic"
+    fg_color: str = ""                # "#rrggbb" text colour; "" = scheme's
+    bg_color: str = ""                # "#rrggbb" background; "" = scheme's
+    cursor_color: str = ""            # "#rrggbb" cursor; "" = scheme's
+    min_contrast: float = 0           # WCAG ratio for all text (4.5 AA, 7 AAA); 0 = scheme's
+    palette: dict[str, str] = field(default_factory=dict)   # e.g. blue = "#6fa8ff"
     keymap: str = ""                  # "" = emulation's built-in keymap
     backspace: str = ""               # "" | "del" | "bs"
     answerback: str = ""
@@ -80,6 +97,15 @@ class SessionProfile:
             raise ValueError("enter_sends must be cr, crlf or lf")
         if self.resize_mode not in ("scale", "grow"):
             raise ValueError("resize_mode must be scale or grow")
+        for key in ("fg_color", "bg_color", "cursor_color"):
+            if getattr(self, key):
+                _check_hex(getattr(self, key))
+        for name, value in self.palette.items():
+            if name not in PALETTE_NAMES:
+                raise ValueError(f"unknown palette colour {name!r}")
+            _check_hex(value)
+        if not (self.min_contrast == 0 or 1 <= self.min_contrast <= 21):
+            raise ValueError("min_contrast must be 0 (scheme default) or between 1 and 21")
         if emulation.EMULATIONS[self.emulation].block_mode and self.transport != "telnet":
             raise ValueError(f"{self.emulation} needs a telnet (TN3270) connection")
 

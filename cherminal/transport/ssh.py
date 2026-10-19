@@ -10,6 +10,8 @@ from .base import Transport
 
 # ask_password(prompt) -> password or None to give up
 PasswordPrompt = Callable[[str], "str | None"]
+# ask_login(host, suggested_user, error) -> (user, password) or None to give up
+LoginPrompt = Callable[[str, str, str], "tuple[str, str] | None"]
 # confirm_host_key(host, key_type, sha256_fingerprint, changed) -> accept?
 HostKeyPrompt = Callable[[str, str, str, bool], bool]
 
@@ -26,7 +28,8 @@ class SSHTransport(Transport):
                  identity_file: str = "", term: str = "vt220",
                  known_hosts: Path | None = None,
                  ask_password: PasswordPrompt | None = None,
-                 confirm_host_key: HostKeyPrompt | None = None):
+                 confirm_host_key: HostKeyPrompt | None = None,
+                 ask_login: LoginPrompt | None = None):
         super().__init__()
         self.host, self.port = host, port
         self.username = username or os.environ.get("USER", "")
@@ -35,6 +38,11 @@ class SSHTransport(Transport):
         self.known_hosts = known_hosts
         self.ask_password = ask_password or (lambda prompt: None)
         self.confirm_host_key = confirm_host_key or (lambda *a: False)
+        # Set when the session asks for user name and password together, for
+        # people whose host login differs from their workstation login.
+        self.ask_login = ask_login
+        if ask_login:
+            self.username = username
         self.client = None
         self.chan = None
 
@@ -60,11 +68,22 @@ class SSHTransport(Transport):
         client.set_missing_host_key_policy(AskPolicy())
 
         password = None
+        error = ""
         for attempt in range(4):
+            if self.ask_login:
+                if self._closing:
+                    raise OSError("closed")
+                login = self.ask_login(self.host, self.username, error)
+                if login is None:
+                    raise OSError("authentication cancelled")
+                self.username, password = login
             try:
+                # With a login prompt, sign in only as the person typed:
+                # no agent or default keys that belong to the workstation user.
                 client.connect(self.host, self.port, username=self.username,
                                password=password, key_filename=self.identity_file,
-                               allow_agent=True, look_for_keys=password is None,
+                               allow_agent=not self.ask_login,
+                               look_for_keys=password is None and not self.ask_login,
                                timeout=15, banner_timeout=15, auth_timeout=30)
                 break
             except paramiko.BadHostKeyException as e:
@@ -81,6 +100,9 @@ class SSHTransport(Transport):
                     raise OSError("authentication failed")
                 if self._closing:
                     raise OSError("closed")
+                if self.ask_login:
+                    error = "Login incorrect. Try again."
+                    continue
                 password = self.ask_password(f"Password for {self.username}@{self.host}:")
                 if password is None:
                     raise OSError("authentication cancelled")

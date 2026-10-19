@@ -103,6 +103,40 @@ Then, from TinyTerm (or any emulator) set to the emulation you use, Telnet
 to this machine on port 2323 and press each key it asks for. The keymap is
 saved to `~/.config/cherminal/keymaps/tinyterm-wyse60.toml`.
 
+## Logging in to SSH hosts as a different user
+
+In a session's Connection tab, tick **Ask for user name and password when
+connecting** for hosts where people log in with an account that isn't
+their workstation login. Each connection then opens a login box with both
+fields (the session's User, if set, is filled in as a suggestion). A wrong
+password asks again. With this on, Cherminal signs in only with what was
+typed, never with the workstation user's SSH keys or agent.
+
+## Colours, high contrast and accessibility
+
+The **Colours** tab of a session sets:
+
+- **Scheme:** includes `high-contrast` (white on black), `high-contrast-light`
+  (black on white), `yellow-on-black` and `black-on-yellow`.
+- **Text, background and cursor** colours of your own.
+- **Minimum contrast:** every colour the host uses is lightened or darkened
+  just enough to reach the chosen WCAG ratio against the background
+  (4.5:1 AA or 7:1 AAA), keeping its hue. The high-contrast schemes use 7:1.
+  This fixes, for example, dark blue mainframe fields on a black screen.
+- **Host colours:** replace any of the 16 base colours (3270 blue, red,
+  pink, green, turquoise, yellow and white are the `bright-` ones).
+
+A preview shows the result and the text's contrast ratio. The settings are
+saved with the session and travel in exported and shared session files.
+
+```toml
+color_scheme = "high-contrast"
+min_contrast = 7
+cursor_color = "#ff00ff"
+[palette]
+bright-blue = "#80c0ff"
+```
+
 ## IBM mainframes (TN3270)
 
 Choose connection **telnet** and emulation `ibm3278-2` (24×80), `ibm3278-3`

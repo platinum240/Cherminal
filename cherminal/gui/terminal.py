@@ -9,10 +9,8 @@ from PyQt6.QtWidgets import QApplication, QInputDialog, QLineEdit, QMessageBox, 
 
 from ..screen import Attr
 from ..session import Session
-from .colors import SCHEMES, palette_256
+from .colors import ensure_contrast, resolve
 from .keys import key_name
-
-PALETTE = palette_256()
 
 
 class _Bridge(QObject):
@@ -29,7 +27,8 @@ class TerminalWidget(QWidget):
     def __init__(self, session: Session, parent=None):
         super().__init__(parent)
         self.session = session
-        self.scheme = SCHEMES.get(session.profile.color_scheme, SCHEMES["classic"])
+        self.colors = resolve(session.profile)
+        self._contrast_cache: dict = {}
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled)
@@ -129,19 +128,24 @@ class TerminalWidget(QWidget):
         self.status_changed.emit("Connecting…")
         self.session.connect(
             ask_password=lambda prompt: self._ask("password", prompt),
+            ask_login=lambda host, user, error: self._ask("login", error, host=host, user=user),
             confirm_host_key=lambda host, kind, fp, changed: self._ask(
                 "hostkey", f"The authenticity of host {host} can't be established.\n"
                            f"{kind} key fingerprint is {fp}.\n\nTrust this host and continue?"),
             on_update=self.bridge.updated.emit,
             on_closed=self.bridge.closed.emit)
 
-    def _ask(self, kind: str, prompt: str):
-        box = {"kind": kind, "result": None}
+    def _ask(self, kind: str, prompt: str, **extra):
+        box = {"kind": kind, "result": None, **extra}
         self.bridge.prompt.emit(prompt, box)    # blocks until answered
         return box["result"]
 
     def _on_prompt(self, prompt: str, box: dict) -> None:
-        if box["kind"] == "password":
+        if box["kind"] == "login":
+            from .dialogs import LoginDialog
+            dlg = LoginDialog(box["host"], box["user"], prompt, self)
+            box["result"] = dlg.credentials() if dlg.exec() else None
+        elif box["kind"] == "password":
             text, ok = QInputDialog.getText(self, "Password", prompt, QLineEdit.EchoMode.Password)
             box["result"] = text if ok else None
         else:
@@ -312,33 +316,38 @@ class TerminalWidget(QWidget):
 
     # ------------------------------------------------------------- painting
 
-    def _color(self, value, default) -> QColor:
+    def _rgb(self, value, default) -> tuple[int, int, int]:
         if value is None:
-            return QColor(*default)
+            return default
         if isinstance(value, tuple):
-            return QColor(*value)
-        return QColor(*PALETTE[value])
+            return value
+        return self.colors.palette[value]
 
     def _colors(self, attr: Attr, selected: bool, screen_reverse: bool):
-        sch = self.scheme
+        c = self.colors
         fg_value = attr.fg
         if attr.bold and isinstance(fg_value, int) and fg_value < 8:
             fg_value += 8     # classic "bold is bright"
-        fg = self._color(fg_value, sch.bold if attr.bold and sch.bold else sch.fg)
-        bg = self._color(attr.bg, sch.bg)
+        fg = self._rgb(fg_value, c.bold if attr.bold and c.bold else c.fg)
+        bg = self._rgb(attr.bg, c.bg)
         if attr.reverse != screen_reverse:
             fg, bg = bg, fg
         if selected:
             fg, bg = bg, fg
-        if attr.dim:
-            fg = fg.darker(150)
+        if attr.dim and c.min_contrast <= 1:
+            fg = tuple(v * 2 // 3 for v in fg)
         if attr.invisible:
-            fg = bg
-        return fg, bg
+            return QColor(*bg), QColor(*bg)
+        if c.min_contrast > 1:
+            key = (fg, bg)
+            if key not in self._contrast_cache:
+                self._contrast_cache[key] = ensure_contrast(fg, bg, c.min_contrast)
+            fg = self._contrast_cache[key]
+        return QColor(*fg), QColor(*bg)
 
     def paintEvent(self, event) -> None:
         p = QPainter(self)
-        sch = self.scheme
+        sch = self.colors
         with self.session.lock:
             s = self.session.screen
             p.fillRect(self.rect(), QColor(*(sch.fg if s.reverse_screen else sch.bg)))
@@ -357,7 +366,7 @@ class TerminalWidget(QWidget):
                 if self.hasFocus():
                     p.fillRect(rect, cursor)
                     cell = s.lines[s.y][s.x]
-                    p.setPen(QColor(*sch.bg))
+                    p.setPen(QColor(*ensure_contrast(sch.bg, sch.cursor, 4.5)))
                     p.setFont(self.term_font)
                     p.drawText(rect.x(), rect.y() + self.ascent, cell.char)
                 else:
