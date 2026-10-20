@@ -3,6 +3,14 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.8.3
+
+- No "Failed to register with host portal" warnings at start-up, whether or
+  not Cherminal has a desktop menu entry.
+- `cherminal --install-desktop` adds a menu entry and the Cherminal icon
+  under `~/.local/share`, so pip installs and AppImages show in the
+  applications menu and the taskbar with the logo.
+
 ## 0.8.2
 
 - No more "Failed to register with host portal" warning at start-up on
