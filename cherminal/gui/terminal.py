@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import os
+import re
+import threading
+from dataclasses import replace
+
 from PyQt6.QtCore import QObject, QRect, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (QClipboard, QColor, QFont, QFontMetrics, QFontMetricsF, QGuiApplication, QKeyEvent,
                          QMouseEvent, QPainter, QWheelEvent)
-from PyQt6.QtWidgets import QApplication, QInputDialog, QLineEdit, QMessageBox, QWidget
+from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu,
+                             QMessageBox, QProgressDialog, QWidget)
 
 from ..screen import Attr
 from ..session import Session
@@ -18,15 +24,21 @@ class _Bridge(QObject):
     updated = pyqtSignal()
     closed = pyqtSignal(str)
     prompt = pyqtSignal(str, object)
+    upload_progress = pyqtSignal(str, int, int)
+    upload_done = pyqtSignal(str, object)       # error ("" = ok), remote paths
 
 
 class TerminalWidget(QWidget):
     title_changed = pyqtSignal(str)
     status_changed = pyqtSignal(str)
+    message = pyqtSignal(str)                   # a passing note for the status bar
+    find_requested = pyqtSignal()
+    colours_requested = pyqtSignal()
 
     def __init__(self, session: Session, parent=None):
         super().__init__(parent)
         self.session = session
+        self.colour_override: dict | None = None    # one-off colours, not saved
         self.colors = resolve(session.profile)
         self._contrast_cache: dict = {}
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -41,11 +53,19 @@ class TerminalWidget(QWidget):
         self.sel_start: tuple[int, int] | None = None   # (absolute line, col)
         self.sel_end: tuple[int, int] | None = None
         self._last_title = ""
+        self.match: tuple[int, int, int] | None = None   # (line, start col, end col)
+        self.transfer_enabled = (session.profile.file_transfer
+                                 and session.profile.transport == "ssh")
+        self.setAcceptDrops(self.transfer_enabled)
+        self._uploading = False
+        self._cancel_upload = False
 
         self.bridge = _Bridge()
         self.bridge.updated.connect(self._on_update)
         self.bridge.closed.connect(self._on_closed)
         self.bridge.prompt.connect(self._on_prompt, Qt.ConnectionType.BlockingQueuedConnection)
+        self.bridge.upload_progress.connect(self._on_upload_progress)
+        self.bridge.upload_done.connect(self._on_upload_done)
         # Coalesce bursts of host output into at most ~60 repaints a second.
         self._repaint = QTimer(self, singleShot=True, interval=16)
         self._repaint.timeout.connect(self.update)
@@ -145,6 +165,9 @@ class TerminalWidget(QWidget):
             from .dialogs import LoginDialog
             dlg = LoginDialog(box["host"], box["user"], prompt, self)
             box["result"] = dlg.credentials() if dlg.exec() else None
+        elif box["kind"] == "replace":
+            answer = QMessageBox.question(self, "Replace file", prompt)
+            box["result"] = answer == QMessageBox.StandardButton.Yes
         elif box["kind"] == "password":
             text, ok = QInputDialog.getText(self, "Password", prompt, QLineEdit.EchoMode.Password)
             box["result"] = text if ok else None
@@ -227,6 +250,191 @@ class TerminalWidget(QWidget):
         if text:
             QGuiApplication.clipboard().setText(text)
 
+    # -------------------------------------------------------------- colours
+
+    def set_colour_override(self, settings: dict | None) -> None:
+        """Colours for this window only; None goes back to the session's."""
+        self.colour_override = settings
+        profile = self.session.profile
+        self.colors = resolve(replace(profile, **settings) if settings else profile)
+        self._contrast_cache.clear()
+        self.update()
+
+    # ---------------------------------------------------------- context menu
+
+    def contextMenuEvent(self, event) -> None:
+        menu = QMenu(self)
+        copy = menu.addAction("Copy", self.copy)
+        copy.setEnabled(bool(self.selected_text()))
+        paste = menu.addAction("Paste", self.paste)
+        paste.setEnabled(bool(QGuiApplication.clipboard().text()))
+        menu.addSeparator()
+        menu.addAction("Search…", self.find_requested.emit)
+        menu.addAction("Colours for this session…", self.colours_requested.emit)
+        if self.transfer_enabled:
+            menu.addSeparator()
+            up = menu.addAction("Upload files…", self.choose_upload)
+            up.setEnabled(self.session.connected and not self._uploading)
+        menu.exec(event.globalPos())
+
+    # --------------------------------------------------------------- search
+
+    def _line_text(self, line) -> str:
+        # Hidden text (passwords) is never matched.
+        return "".join(" " if c.attr.invisible else c.char for c in line)
+
+    def clear_match(self) -> None:
+        if self.match is not None:
+            self.match = None
+            self.clear_selection()
+
+    def find(self, pattern: str, *, backwards: bool = True, case: bool = False,
+             whole: bool = False, regex: bool = False) -> bool:
+        """Select the next match above (backwards) or below the current one.
+
+        The first search starts from the bottom (up) or top (down) of the
+        view and wraps around. Raises re.error for a bad expression.
+        """
+        expr = pattern if regex else re.escape(pattern)
+        if whole:
+            expr = rf"(?<!\w)(?:{expr})(?!\w)"
+        rx = re.compile(expr, 0 if case else re.IGNORECASE)
+        with self.session.lock:
+            lines = [self._line_text(line) for line in self._all_lines()]
+            rows = self.session.screen.rows
+        n = len(lines)
+        if not pattern or not n:
+            return False
+        history = n - rows
+        first = history - self.scroll_offset
+        if self.match:
+            l0, c0 = self.match[0], self.match[1]
+        elif backwards:
+            l0, c0 = min(n - 1, first + rows - 1), 1 << 30
+        else:
+            l0, c0 = max(0, first), -1
+        step = -1 if backwards else 1
+        for k in range(n + 1):
+            i = (l0 + step * k) % n
+            found = [(m.start(), m.end()) for m in rx.finditer(lines[i]) if m.end() > m.start()]
+            if k == 0:
+                found = [m for m in found if (m[0] < c0 if backwards else m[0] > c0)]
+            elif k == n:
+                found = [m for m in found if (m[0] >= c0 if backwards else m[0] <= c0)]
+            if found:
+                start, end = found[-1] if backwards else found[0]
+                self._show_match(i, start, end, history, rows)
+                return True
+        self.clear_match()
+        return False
+
+    def _show_match(self, line: int, start: int, end: int, history: int, rows: int) -> None:
+        self.match = (line, start, end)
+        self.sel_start, self.sel_end = (line, start), (line, end)
+        first = history - self.scroll_offset
+        if not first <= line < first + rows:
+            self.scroll_offset = max(0, min(history, history - (line - rows // 2)))
+        self.update()
+
+    # -------------------------------------------------------- file transfer
+
+    @staticmethod
+    def _local_files(mime) -> list[str]:
+        if not mime.hasUrls():
+            return []
+        return [u.toLocalFile() for u in mime.urls() if u.isLocalFile()]
+
+    def dragEnterEvent(self, event) -> None:
+        if self.transfer_enabled and self._local_files(event.mimeData()):
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event) -> None:
+        if self.transfer_enabled and self._local_files(event.mimeData()):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:
+        paths = self._local_files(event.mimeData())
+        if self.transfer_enabled and paths:
+            event.acceptProposedAction()
+            self.upload_files(paths)
+
+    def choose_upload(self) -> None:
+        paths, _ = QFileDialog.getOpenFileNames(self, "Upload files")
+        if paths:
+            self.upload_files(paths)
+
+    def upload_files(self, paths: list[str]) -> None:
+        p = self.session.profile
+        transport = self.session.transport
+        if not self.transfer_enabled:
+            return
+        if self._uploading:
+            QMessageBox.information(self, "Upload", "An upload is already running.")
+            return
+        if not self.session.connected or not hasattr(transport, "upload"):
+            QMessageBox.warning(self, "Upload", "Connect to the host first.")
+            return
+        files = [path for path in paths if os.path.isfile(path)]
+        skipped = len(paths) - len(files)
+        if not files:
+            QMessageBox.warning(self, "Upload", "Only files can be uploaded, not folders.")
+            return
+        names = "\n".join(os.path.basename(f) for f in files[:10])
+        if len(files) > 10:
+            names += f"\n… and {len(files) - 10} more"
+        where = p.upload_dir or "your home folder"
+        text = f"Upload {len(files)} file{'s' * (len(files) != 1)} to {where} on {p.host}?\n\n{names}"
+        if skipped:
+            text += f"\n\n{skipped} folder{'s' * (skipped != 1)} will be skipped."
+        if QMessageBox.question(self, "Upload", text) != QMessageBox.StandardButton.Yes:
+            return
+        self._uploading, self._cancel_upload = True, False
+        self.progress = QProgressDialog("Uploading…", "Cancel", 0, 1000, self)
+        self.progress.setWindowTitle("Upload")
+        self.progress.setWindowModality(Qt.WindowModality.WindowModal)
+        self.progress.setMinimumDuration(0)
+        self.progress.canceled.connect(lambda: setattr(self, "_cancel_upload", True))
+
+        def progress(name, done, total):
+            self.bridge.upload_progress.emit(name, done, total)
+            return not self._cancel_upload
+
+        def work():
+            from ..transport.ssh import UploadCancelled
+            try:
+                written = transport.upload(
+                    files, p.upload_dir, progress=progress,
+                    replace=lambda path: self._ask(
+                        "replace", f"{path} already exists on {p.host}. Replace it?"))
+                self.bridge.upload_done.emit("", written)
+            except UploadCancelled:
+                self.bridge.upload_done.emit("cancelled", [])
+            except Exception as e:          # noqa: BLE001 - shown to the user
+                self.bridge.upload_done.emit(str(e) or type(e).__name__, [])
+
+        threading.Thread(target=work, daemon=True, name="upload").start()
+
+    def _on_upload_progress(self, name: str, done: int, total: int) -> None:
+        if self._uploading and not self._cancel_upload:
+            self.progress.setLabelText(f"Uploading {name}…")
+            self.progress.setValue(done * 1000 // total if total else 1000)
+
+    def _on_upload_done(self, error: str, written: list) -> None:
+        self._uploading = False
+        self.progress.reset()
+        self.progress.deleteLater()
+        if error == "cancelled":
+            self.message.emit("Upload cancelled")
+        elif error:
+            QMessageBox.warning(self, "Upload", f"The upload failed: {error}")
+        elif written:
+            folder = os.path.dirname(written[0])
+            self.message.emit(f"Uploaded {len(written)} file{'s' * (len(written) != 1)} "
+                              f"to {folder}")
+        else:
+            self.message.emit("Nothing uploaded")
+        self.setFocus()
+
     # ----------------------------------------------------------- scrollback
 
     def _all_lines(self):
@@ -253,6 +461,7 @@ class TerminalWidget(QWidget):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
+            self.match = None
             self.sel_start = self.sel_end = self._cell_at(event.position())
             self.update()
         elif event.button() == Qt.MouseButton.MiddleButton:
@@ -284,6 +493,7 @@ class TerminalWidget(QWidget):
         self.update()
 
     def clear_selection(self) -> None:
+        self.match = None
         if self.sel_start is not None:
             self.sel_start = self.sel_end = None
             self.update()

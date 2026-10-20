@@ -8,13 +8,14 @@ import sys
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (QApplication, QFontDialog, QLabel, QMainWindow, QMessageBox,
-                             QTabWidget, QToolBar)
+                             QTabWidget, QToolBar, QVBoxLayout, QWidget)
 
 from .. import __version__
 from ..config import ProfileStore, SessionProfile
 from ..keymap import Binding
 from ..session import Session
-from .dialogs import SessionEditor, SessionManager
+from .dialogs import SessionColoursDialog, SessionEditor, SessionManager
+from .search import SearchBar
 from .terminal import TerminalWidget
 
 
@@ -29,7 +30,14 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget(tabsClosable=True, movable=True, documentMode=True)
         self.tabs.tabCloseRequested.connect(self.close_tab)
         self.tabs.currentChanged.connect(self._tab_changed)
-        self.setCentralWidget(self.tabs)
+        self.search = SearchBar()
+        central = QWidget()
+        lay = QVBoxLayout(central)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(self.tabs, 1)
+        lay.addWidget(self.search)
+        self.setCentralWidget(central)
         self.status = QLabel()
         self.statusBar().addWidget(self.status, 1)
         self.fkey_bar = QToolBar("Function keys")
@@ -65,8 +73,11 @@ class MainWindow(QMainWindow):
         e = mb.addMenu("&Edit")
         self._action(e, "&Copy", lambda: self._term() and self._term().copy())
         self._action(e, "&Paste", lambda: self._term() and self._term().paste())
+        e.addSeparator()
+        self._action(e, "&Search…", self.open_search, "Ctrl+Shift+F")
         v = mb.addMenu("&View")
         self._action(v, "&Font…", self.choose_font)
+        self._action(v, "&Colours for this session…", self.session_colours)
         self.scale_action = self._action(v, "&Scale text to window", self.toggle_scale)
         self.scale_action.setCheckable(True)
         self._action(v, "Show &function-key bar",
@@ -92,13 +103,19 @@ class MainWindow(QMainWindow):
             term.session.run_binding(Binding("action", action))
             term.update()
 
-    def open_session(self, profile: SessionProfile) -> None:
+    def open_session(self, profile: SessionProfile,
+                     colours: dict | None = None) -> TerminalWidget | None:
         try:
             session = Session(profile, self.store)
         except ValueError as e:
             QMessageBox.warning(self, "Session", f"Cannot open {profile.name}: {e}")
-            return
+            return None
         term = TerminalWidget(session)
+        if colours:
+            term.set_colour_override(colours)
+        term.find_requested.connect(self.open_search)
+        term.colours_requested.connect(self.session_colours)
+        term.message.connect(lambda text: self.statusBar().showMessage(text, 8000))
         idx = self.tabs.addTab(term, profile.name)
         term.title_changed.connect(lambda t, w=term: self._set_tab_title(w, t))
         term.status_changed.connect(lambda text, w=term: self._set_status(w, text))
@@ -107,6 +124,7 @@ class MainWindow(QMainWindow):
             self.resize(term.sizeHint().width() + 20, term.sizeHint().height() + 100)
         term.setFocus()
         term.connect_session()
+        return term
 
     def _set_tab_title(self, term, title: str) -> None:
         idx = self.tabs.indexOf(term)
@@ -121,6 +139,7 @@ class MainWindow(QMainWindow):
     def _tab_changed(self, _idx: int) -> None:
         term = self._term()
         self.fkey_bar.clear()
+        self.search.set_terminal(term)
         if not term:
             self.status.setText("")
             return
@@ -168,9 +187,24 @@ class MainWindow(QMainWindow):
     def reconnect(self) -> None:
         term = self._term()
         if term:
-            profile = term.session.profile
+            profile, colours = term.session.profile, term.colour_override
             self.close_tab(self.tabs.currentIndex())
-            self.open_session(profile)
+            self.open_session(profile, colours)
+
+    def open_search(self) -> None:
+        if self._term():
+            self.search.set_terminal(self._term())
+            self.search.open()
+
+    def session_colours(self) -> None:
+        """One-off colours for the current tab; the saved session is untouched."""
+        term = self._term()
+        if not term:
+            return
+        dlg = SessionColoursDialog(term.session.profile, term.colour_override, self)
+        if dlg.exec():
+            term.set_colour_override(dlg.override())
+        term.setFocus()
 
     def choose_font(self) -> None:
         term = self._term()

@@ -28,6 +28,10 @@ sources it was derived from, and the architecture.
   "add rows and columns" instead, or toggle View › Scale text to window.
 - **Function-key bar** built from each session's macros, tabs, scrollback,
   copy/paste (including X11 primary selection), colour schemes, any code page.
+- **Right-click menu and search:** copy, paste, search and one-off colours;
+  a search bar that looks up or down through the screen and scrollback.
+- **File upload over SSH:** drop files on the window to send them to the
+  host by SFTP, when the session allows it.
 - **`cherminal-keycapture`:** records exactly what another emulator sends for
   each key, over Telnet, and saves it as a Cherminal keymap. This is how to
   carry an existing TinyTerm keyboard setup across.
@@ -146,6 +150,49 @@ cursor_color = "#ff00ff"
 [palette]
 bright-blue = "#80c0ff"
 ```
+
+### Changing colours for one session only
+
+**View › Colours for this session…** (also on the right-click menu) changes
+the colours of the open window without touching the saved session. On a
+shared machine the administrator sets the session's colours once, and a user
+who needs, say, yellow on black or a higher contrast picks it just for
+themselves. **Use the session's colours** goes back. The change lasts until
+the tab is closed (it survives Session › Reconnect) and works in limited mode.
+
+## Copy, paste and search
+
+Right-click the screen for **Copy**, **Paste**, **Search…** and **Colours for
+this session…**. Selecting with the mouse also fills the X11 primary
+selection, and the middle button pastes it.
+
+**Search…** (or Edit › Search…, Ctrl+Shift+F) opens a bar under the screen.
+Type to find the nearest match above; **▲** / Enter searches up through
+older text, **▼** / Shift+Enter searches down, and both wrap around. The
+settings button on the right has **Match case**, **Match whole word** and
+**Regular expression**. Esc closes the bar. Hidden text, such as a password
+field, is never matched.
+
+## Uploading files over SSH
+
+File transfer is **off** unless a session turns it on, in the session's
+**File transfer** tab (SSH sessions only):
+
+```toml
+file_transfer = true
+upload_dir = "~/inbox"     # default: the user's home folder
+```
+
+Then drop files from the file manager onto the session window (or right-click
+› Upload files…). Cherminal asks before sending, shows progress with a Cancel
+button, and asks before replacing a file that already exists on the host.
+
+- Files go by SFTP inside the session's own SSH connection: encrypted, to the
+  host whose key was checked when it connected, as the user who signed in.
+  The host's normal permissions apply.
+- Only the file's name is used on the host; folders are not uploaded.
+- An upload is written to `NAME.part` and renamed when complete, so a
+  cancelled or broken upload never replaces a good file.
 
 ## IBM mainframes (TN3270)
 

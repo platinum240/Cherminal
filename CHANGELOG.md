@@ -3,6 +3,16 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.7.0
+
+- Colours for this session: change an open window's colours (scheme,
+  contrast, any colour) without changing the saved session.
+- Right-click menu with Copy, Paste, Search and Colours.
+- Search bar: up/down through screen and scrollback, with Match case, Match
+  whole word and Regular expression.
+- Drop files on an SSH session to upload them by SFTP. Off by default; turn
+  it on in the new File transfer tab, with an optional destination folder.
+
 ## 0.6.0
 
 - Keyboard map…: remap keys by clicking them on an on-screen keyboard, with
