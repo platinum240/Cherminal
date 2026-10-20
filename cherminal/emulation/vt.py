@@ -9,7 +9,7 @@ character set and a handful of private sequences.
 from __future__ import annotations
 
 from ..screen import Attr
-from .base import Emulation
+from .base import MAX_SEQUENCE, Emulation
 
 # DEC Special Graphics (line drawing), selected with ESC ( 0.
 DEC_GRAPHICS = {
@@ -23,6 +23,8 @@ UK_CHARSET = {"#": "£"}
 
 # SCO / PC colour order -> ANSI colour order.
 PC_TO_ANSI = [0, 4, 2, 6, 1, 5, 3, 7]
+
+MAX_PARAM = 65535
 
 GROUND, ESCAPE, ESC_INTER, CSI_PARAM, OSC, DCS, CHARSET = range(7)
 
@@ -68,6 +70,9 @@ class VTEmulation(Emulation):
     # survive whatever the session's character set is.
     PRINT_ON, PRINT_OFF = b"\x1b[5i", b"\x1b[4i"
     host_print = True
+    # A print job is sent on in pieces of this size, so a host that never
+    # ends one cannot fill memory; the printer still gets every byte.
+    MAX_PRINT_CHUNK = 8 * 1024 * 1024
 
     def feed(self, data: bytes) -> None:
         data = self._held + data
@@ -94,6 +99,9 @@ class VTEmulation(Emulation):
     def _route(self, data: bytes) -> None:
         if self.printing:
             self._print_job += data
+            if len(self._print_job) >= self.MAX_PRINT_CHUNK:
+                job, self._print_job = bytes(self._print_job), bytearray()
+                self.on_print_data(job)
         elif data:
             super().feed(data)
 
@@ -127,14 +135,17 @@ class VTEmulation(Emulation):
             self._escape(ch)
         elif state == ESC_INTER:
             if 0x20 <= o <= 0x2f:
-                self.inter += ch
+                if len(self.inter) < MAX_SEQUENCE:
+                    self.inter += ch
             else:
                 self._esc_dispatch(self.inter, ch)
         elif state == CHARSET:
             self.charsets[self.charset_slot] = ch
             self.state = GROUND
         elif state == CSI_PARAM:
-            if 0x30 <= o <= 0x3f:
+            if len(self.params) + len(self.inter) >= MAX_SEQUENCE:
+                self.state = GROUND             # runaway sequence: drop it
+            elif 0x30 <= o <= 0x3f:
                 self.params += ch
             elif 0x20 <= o <= 0x2f:
                 self.inter += ch
@@ -150,8 +161,8 @@ class VTEmulation(Emulation):
                 self._osc_dispatch(self.osc)
                 self.state = ESCAPE
                 self.inter = ""
-            else:
-                self.osc += ch
+            elif len(self.osc) < MAX_SEQUENCE:
+                self.osc += ch          # past the limit the rest is dropped
         elif state == DCS:
             # Device control strings (DECUDK, sixel, ...) are not supported yet.
             if o == 0x1b or (self.c1_controls and o == 0x9c):
@@ -285,7 +296,8 @@ class VTEmulation(Emulation):
         out = []
         for part in raw.split(";") if raw else []:
             part = part.split(":")[0]
-            out.append(int(part) if part.isdigit() else 0)
+            # Clamp as xterm does, so CSI 99999999 b can't ask for a billion characters.
+            out.append(min(int(part), MAX_PARAM) if part.isdigit() else 0)
         return out
 
     def _csi_dispatch(self, raw: str, inter: str, final: str) -> None:
@@ -369,7 +381,7 @@ class VTEmulation(Emulation):
             s.scroll_down(arg())
         elif final == "b":
             prev = s.lines[s.y][s.x - 1].char if s.x > 0 else " "
-            s.write_text(prev * arg())
+            s.write_text(prev * min(arg(), s.cols * s.rows))
         elif final == "m":
             self._sgr(raw)
         elif final == "r":

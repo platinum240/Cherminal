@@ -1,0 +1,9 @@
+
+[FPM2]
+name=cherminal-policy
+version=@VERSION@
+release=1
+summary=Cherminal site policy
+description=The site's /etc/cherminal/policy.toml.
+containers=2048
+installoption=2

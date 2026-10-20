@@ -13,3 +13,12 @@ def term():
         emu = emulation.create(name, screen, replies.append, **kw)
         return emu, screen, replies
     return make
+
+
+@pytest.fixture(autouse=True)
+def no_site_policy(monkeypatch, tmp_path_factory):
+    """Tests never pick up the machine's /etc/cherminal/policy.toml."""
+    from cherminal import policy
+    monkeypatch.setattr(policy, "POLICY_PATH", tmp_path_factory.mktemp("policy") / "policy.toml")
+    yield
+    policy.set_current(policy.Policy())

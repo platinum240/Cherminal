@@ -1,0 +1,19 @@
+[EPM]
+name=cherminal
+version=@VERSION@
+release=1
+summary=Cherminal terminal emulator
+description=Terminal emulation for host connections: IBM 3270 (TN3270), VT, Wyse, TeleVideo, SSH, Telnet and serial sessions, with saved sessions and key mapping.
+category=Communication
+containers=2048
+vendor=Cherminal
+copyright=Apache-2.0
+
+[FPM1]
+name=cherminal
+version=@VERSION@
+release=1
+summary=Cherminal application
+description=Cherminal and its own Python and Qt, in /opt/cherminal.
+containers=2048
+installoption=2

@@ -94,6 +94,12 @@ To add Cherminal to the applications menu with its icon (for the current
 user, under `~/.local/share`), run `cherminal --install-desktop` once. This
 works for the AppImage too (`./Cherminal-*.AppImage --install-desktop`).
 
+### On eLux thin clients
+
+Build an eLux package (EPM) from the AppImage with
+`packaging/elux/build-epm.sh` and Unicon's `epkg` tool, then deploy it from
+Scout. See [packaging/elux/README.md](packaging/elux/README.md).
+
 ## Keymaps
 
 Key names look like `F5`, `Shift+F1`, `Ctrl+Up`, `Keypad5`, `app:Up`
@@ -197,7 +203,8 @@ upload_dir = "~/inbox"     # default: the user's home folder
 ```
 
 Then drop files from the file manager onto the session window (or right-click
-› Upload files…). Cherminal asks before sending, shows progress with a Cancel
+› Upload files…; in limited mode only dropping works, since a file chooser
+would let users browse the disk). Cherminal asks before sending, shows progress with a Cancel
 button, and asks before replacing a file that already exists on the host.
 
 - Files go by SFTP inside the session's own SSH connection: encrypted, to the
@@ -218,7 +225,8 @@ the right-click menu; the key can be remapped like any other
 In a session's **Printing** tab:
 
 - **Printer:** with none chosen, Cherminal shows the print dialog each time,
-  which also offers saving a PDF. With a printer chosen (or a CUPS printer
+  which also offers saving a PDF (except in limited mode, or where the site
+policy sets `print_to_file = false`). With a printer chosen (or a CUPS printer
   name typed in), it prints straight to it without asking, which suits
   shared and limited-mode thin clients.
 - **Let the host print to it:** VT sessions only. A host that sends
@@ -239,9 +247,10 @@ Mainframe-started printing to a 3287 printer LU (TN3270E) is not included.
 Choose connection **telnet** and emulation `ibm3278-2` (24×80), `ibm3278-3`
 (32×80), `ibm3278-4` (43×80) or `ibm3278-5` (27×132); the larger models
 switch to their size when the host asks. Tick **Use TLS** for port 992 or
-any secure TN3270 port; untick "Check the host's certificate" only if the
-host uses a certificate from an in-house CA that this machine doesn't
-trust. The character set defaults to EBCDIC code page 037 (US/Canada); set
+any secure TN3270 port. If the host's certificate comes from an in-house
+CA, set `tls_ca_file` in the site policy (below) so the certificate can
+still be checked; untick "Check the host's certificate" only as a last
+resort. The character set defaults to EBCDIC code page 037 (US/Canada); set
 e.g. `cp500`, `cp273` or `cp1140` under Terminal › Character set if your
 host uses another.
 
@@ -285,10 +294,40 @@ transfer (IND$FILE), and 5250 (IBM i).
 edit sessions, use Quick connect or start a local shell, and those menu
 shortcuts are gone too. Edit, View, Session and Help stay. Started with no
 session names, it shows a list of the available sessions with only a
-Connect button (local shell sessions are left out).
+Connect button (local shell sessions are left out). Right-click › Upload
+files… is not offered (dropping files still works where the session allows
+it), and Print screen goes to printers only, never to a PDF file.
 
 Put the command in the launcher or desktop icon the users start, for
 example together with a shared setup folder below.
+
+## Site policy (administrators)
+
+An administrator can enforce settings that users cannot change, in
+`/etc/cherminal/policy.toml` (owned by root). Cherminal reads only that
+path, and no option or environment variable turns it off. Every setting is
+optional; an empty file changes nothing.
+
+```toml
+limited = true                    # always limited mode, as with --limited
+allowed_transports = ["telnet", "ssh"]
+file_upload = false               # no SFTP upload, whatever the session says
+print_to_file = false             # Print screen to printers only, never PDF
+require_tls = false               # Telnet/TN3270 only over TLS (off by default)
+require_tls_verify = false        # TLS must check the certificate (off by default)
+tls_ca_file = "/etc/cherminal/ca.pem"   # extra CA certificates to trust for TLS
+```
+
+The TLS settings are off by default so mainframes without TLS keep working;
+turn them on once every host supports it. Sessions the policy doesn't allow
+are hidden from the session list and refused if opened another way, with a
+message saying why.
+
+Check a file before deploying it with `cherminal --check-policy FILE`. A
+policy file that has a mistake in it, or can't be read, stops Cherminal
+from starting, so a typo never leaves clients unrestricted.
+`packaging/elux/policy.toml.example` explains each setting, and the eLux
+package can carry the policy (see [packaging/elux/README.md](packaging/elux/README.md)).
 
 ## Sharing sessions across machines
 
@@ -334,3 +373,7 @@ pytest
 
 The emulation, keymap, config and Telnet code is pure Python and tested
 headlessly; only `cherminal/gui` imports Qt.
+
+## License
+
+Cherminal is licensed under the [Apache License, Version 2.0](LICENSE).

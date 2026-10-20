@@ -8,7 +8,7 @@ marked UNVERIFIED should be checked against a manual or real terminal.
 
 from __future__ import annotations
 
-from .base import Emulation
+from .base import MAX_SEQUENCE, Emulation
 
 # How many argument characters follow each ESC command. "CR" / "DEL" / "C"
 # mean "read up to and including that terminator".
@@ -83,6 +83,9 @@ class Wyse50(Emulation):
     # ------------------------------------------------------------- escapes
 
     def _collect(self, ch: str) -> None:
+        if len(self._seq) >= MAX_SEQUENCE:
+            self._seq = None                # runaway sequence: drop it
+            return
         self._seq += ch
         cmd, args = self._seq[0], self._seq[1:]
         need = _ARGS.get(cmd, 0)

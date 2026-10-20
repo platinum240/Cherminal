@@ -8,6 +8,12 @@ from typing import Callable
 from ..screen import Screen
 
 
+# Upper bounds on what a host can make the parsers hold in memory. Real
+# sequences are far shorter; without a limit an endless one (a broken host, or
+# a binary file shown on screen) grows until the client freezes.
+MAX_SEQUENCE = 4096          # one escape / control sequence or string, in characters
+
+
 class Emulation:
     """Turns host output into screen operations.
 

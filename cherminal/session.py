@@ -8,7 +8,7 @@ from __future__ import annotations
 import threading
 from typing import Callable
 
-from . import emulation
+from . import emulation, policy
 from .config import ProfileStore, SessionProfile
 from .keymap import Binding, Keymap
 from .screen import Screen
@@ -18,6 +18,7 @@ from .transport import Transport, from_profile
 class Session:
     def __init__(self, profile: SessionProfile, store: ProfileStore | None = None,
                  transport: Transport | None = None):
+        policy.current().check(profile)    # PolicyError (a ValueError) if not allowed
         self.profile = profile
         self.store = store or ProfileStore()
         self.encoding = profile.effective_encoding
