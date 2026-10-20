@@ -26,6 +26,7 @@ class _Bridge(QObject):
     prompt = pyqtSignal(str, object)
     upload_progress = pyqtSignal(str, int, int)
     upload_done = pyqtSignal(str, object)       # error ("" = ok), remote paths
+    print_data = pyqtSignal(bytes)              # a host passthrough print job
 
 
 class TerminalWidget(QWidget):
@@ -66,6 +67,8 @@ class TerminalWidget(QWidget):
         self.bridge.prompt.connect(self._on_prompt, Qt.ConnectionType.BlockingQueuedConnection)
         self.bridge.upload_progress.connect(self._on_upload_progress)
         self.bridge.upload_done.connect(self._on_upload_done)
+        self.bridge.print_data.connect(self._on_print_data)
+        session.emulation.on_print_data = self.bridge.print_data.emit
         # Coalesce bursts of host output into at most ~60 repaints a second.
         self._repaint = QTimer(self, singleShot=True, interval=16)
         self._repaint.timeout.connect(self.update)
@@ -234,6 +237,8 @@ class TerminalWidget(QWidget):
             self.copy()
         elif name == "paste":
             self.paste()
+        elif name == "print-screen":
+            self.print_screen()
         elif name == "scroll-up":
             self.scroll_by(self.session.screen.rows // 2)
         elif name == "scroll-down":
@@ -271,6 +276,7 @@ class TerminalWidget(QWidget):
         menu.addSeparator()
         menu.addAction("Search…", self.find_requested.emit)
         menu.addAction("Colours for this session…", self.colours_requested.emit)
+        menu.addAction("Print screen…", self.print_screen)
         if self.transfer_enabled:
             menu.addSeparator()
             up = menu.addAction("Upload files…", self.choose_upload)
@@ -335,6 +341,18 @@ class TerminalWidget(QWidget):
         if not first <= line < first + rows:
             self.scroll_offset = max(0, min(history, history - (line - rows // 2)))
         self.update()
+
+    # ------------------------------------------------------------- printing
+
+    def print_screen(self) -> None:
+        from .printing import print_screen
+        if print_screen(self, self):
+            self.message.emit("Screen sent to the printer")
+        self.setFocus()
+
+    def _on_print_data(self, data: bytes) -> None:
+        from .printing import print_raw
+        self.message.emit(print_raw(data, self.session.profile.printer, self))
 
     # -------------------------------------------------------- file transfer
 

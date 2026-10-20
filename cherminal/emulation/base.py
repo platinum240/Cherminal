@@ -34,6 +34,11 @@ class Emulation:
         self.app_keypad = False
         self.bracketed_paste = False
         self.on_bell: Callable[[], None] = lambda: None
+        # Host-initiated print jobs (raw bytes for the local printer).
+        self.on_print_data: Callable[[bytes], None] = lambda data: None
+        self.printing = False
+        self._print_job = bytearray()
+        self._held = b""
 
     def feed(self, data: bytes) -> None:
         self.feed_text(self._decoder.decode(data))
@@ -46,10 +51,12 @@ class Emulation:
 
     def notice(self, text: str) -> None:
         """Show a message from Cherminal itself, such as a disconnect."""
-        self.feed(f"\r\n[Cherminal: {text}]\r\n".encode(self.encoding, "replace"))
+        self.feed_text(f"\r\n[Cherminal: {text}]\r\n")
 
     def reset(self) -> None:
         self.screen.reset()
         self.app_cursor = False
         self.app_keypad = False
         self.bracketed_paste = False
+        self.printing = False
+        self._print_job = bytearray()

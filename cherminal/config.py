@@ -85,6 +85,8 @@ class SessionProfile:
     enter_sends: str = "cr"           # cr | crlf | lf
     resize_mode: str = "scale"        # scale: keep cols x rows, fit the font
                                       # grow: keep the font, add rows/columns
+    printer: str = ""                 # "" = choose in the print dialog each time
+    host_print: bool = True           # VT: host may print via ESC [ 5 i (passthrough)
     keys: dict[str, str] = field(default_factory=dict)
     macros: dict[str, str] = field(default_factory=dict)
 

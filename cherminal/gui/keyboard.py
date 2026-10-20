@@ -32,7 +32,7 @@ MAIN_ROWS = [
      ("Alt", MOD, 1.5), (None, None, 1), ("Ctrl", MOD, 1.5)],
 ]
 # (label, key name, x, y, w, h) in key units, right of the main block.
-NAV = [("Pause", "Pause", 0, 0, 1, 1),
+NAV = [("PrtSc", "Print", 0, 0, 1, 1), ("Pause", "Pause", 2, 0, 1, 1),
        ("Ins", "Insert", 0, 1, 1, 1), ("Home", "Home", 1, 1, 1, 1), ("PgUp", "PageUp", 2, 1, 1, 1),
        ("Del", "Delete", 0, 2, 1, 1), ("End", "End", 1, 2, 1, 1), ("PgDn", "PageDown", 2, 2, 1, 1),
        ("↑", "Up", 1, 4, 1, 1), ("←", "Left", 0, 5, 1, 1), ("↓", "Down", 1, 5, 1, 1),
@@ -52,7 +52,7 @@ US_SHIFTED = dict(zip("`1234567890-=[]\\;',./", "~!@#$%^&*()_+{}|:\"<>?"))
 
 GENERAL_ACTIONS = [("copy", "Copy"), ("paste", "Paste"), ("break", "Send Break"),
                    ("scroll-up", "Scroll back"), ("scroll-down", "Scroll forward"),
-                   ("reset", "Reset terminal")]
+                   ("reset", "Reset terminal"), ("print-screen", "Print screen")]
 IBM3270_ACTIONS = (
     [("enter", "Enter"), ("clear", "Clear"), ("reset", "Reset (unlock keyboard)"),
      ("newline", "New line"), ("tab", "Next field"), ("backtab", "Previous field"),
@@ -62,7 +62,7 @@ IBM3270_ACTIONS = (
      ("left", "Cursor left"), ("right", "Cursor right")]
     + [(f"pa{i}", f"PA{i}") for i in range(1, 4)]
     + [(f"pf{i}", f"PF{i}") for i in range(1, 25)]
-    + [("copy", "Copy"), ("paste", "Paste")])
+    + [("copy", "Copy"), ("paste", "Paste"), ("print-screen", "Print screen")])
 
 DEFAULT, PLAIN, SEND = "<default>", "<plain>", "<send>"
 
@@ -71,7 +71,7 @@ CAP_LABELS = {"reset": "Reset", "erase": "Erase", "tab": "Next fld", "backtab": 
               "home": "1st fld", "field-end": "End fld", "insert": "Insert",
               "erase-eof": "Erase EOF", "erase-input": "Erase inp", "newline": "New line",
               "up": "↑", "down": "↓", "left": "←", "right": "→", "scroll-up": "Scroll ↑",
-              "scroll-down": "Scroll ↓", "break": "Break"}
+              "scroll-down": "Scroll ↓", "break": "Break", "print-screen": "Print"}
 
 
 def describe(value: str | None, labels: dict[str, str]) -> str:

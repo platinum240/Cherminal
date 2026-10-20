@@ -25,6 +25,7 @@ class Session:
         self.emulation = emulation.create(profile.emulation, self.screen, self._reply,
                                           encoding=self.encoding,
                                           answerback=profile.answerback)
+        self.emulation.host_print = profile.host_print
         self.keymap: Keymap = self.store.build_keymap(profile)
         self.transport = transport
         self.connected = False

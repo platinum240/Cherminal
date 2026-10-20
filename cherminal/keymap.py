@@ -15,7 +15,8 @@ MODIFIERS = ("Ctrl", "Alt", "Shift")
 NAMED_KEYS = (
     [f"F{i}" for i in range(1, 25)]
     + ["Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown",
-       "Insert", "Delete", "Backspace", "Tab", "Enter", "Escape", "Space", "Break", "Pause"]
+       "Insert", "Delete", "Backspace", "Tab", "Enter", "Escape", "Space", "Break", "Pause",
+       "Print", "SysReq"]
     + [f"Keypad{i}" for i in range(10)]
     + ["KeypadEnter", "KeypadPlus", "KeypadMinus", "KeypadMultiply",
        "KeypadDivide", "KeypadDecimal", "KeypadComma"]
@@ -236,6 +237,7 @@ COMMON = {
     "Shift+PageUp": "action:scroll-up",
     "Shift+PageDown": "action:scroll-down",
     "Break": "action:break",
+    "Print": "action:print-screen",
 }
 
 BUILTIN: dict[str, dict[str, str]] = {
