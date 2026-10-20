@@ -56,6 +56,9 @@ AID_PF = dict(zip(range(1, 25), [0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8,
                                  0xC9, 0x4A, 0x4B, 0x4C]))
 SHORT_READ = {AID_CLEAR, *AID_PA.values()}
 
+# What a numeric field accepts from the keyboard (the 3270 numeric lock).
+NUMERIC_KEYS = frozenset("0123456789.,-")
+
 # 6-bit values as sent in 12-bit addresses and field attributes.
 CODE_TABLE = bytes([
     0x40, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
@@ -488,6 +491,89 @@ class IBM3270(Emulation):
                 break
         self._render()
 
+    def paste_text(self, text: str) -> int:
+        """Type pasted text into the input fields; returns the characters placed.
+
+        Text fills the field the cursor is in and runs on into the next
+        unprotected field when one fills up; a line break moves to the first
+        input field on a following row, like Newline. Protected text is
+        skipped, never overtyped. Pasting stops, with the usual OIA message,
+        at a character a field refuses (a letter in a numeric field: X NUM),
+        and when the screen has no input fields left below the cursor, so it
+        never wraps round to the top and overtypes what was pasted first.
+        """
+        lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        while len(lines) > 1 and not lines[-1]:
+            lines.pop()                             # a trailing line break
+        placed, advanced = 0, False  # advanced: the last character filled a field
+        self._paste_full = False
+        for i, line in enumerate(lines):
+            if i and not advanced and not self._paste_newline():
+                if any(lines[i:]):
+                    self._refuse("Overflow")
+                break
+            advanced = False
+            for ch in line:
+                step = self._paste_char(ch)
+                if step is None:
+                    break
+                placed += step[0]
+                advanced = step[1]
+            else:
+                continue
+            break
+        self._render()
+        return placed
+
+    def _paste_char(self, ch: str) -> tuple[int, bool] | None:
+        """(characters placed, moved to the next field), or None to stop."""
+        if self._paste_full:
+            return self._refuse("Overflow") or None
+        if ch == "\t":
+            nxt = self._next_input(self.cursor)
+            if nxt is None:
+                return self._refuse("Overflow") or None
+            self.cursor = nxt
+            return 0, False
+        pos = self.cursor
+        if self._formatted() and self._protected(pos):
+            nxt = self._next_input(pos)
+            if nxt is None:
+                return self._refuse("Overflow") or None
+            self.cursor = pos = nxt
+        if not self._type_char(ch):
+            return None
+        if self.cursor <= pos:                      # wrapped past the bottom
+            self.cursor, self._paste_full = pos, True
+            return 1, True
+        if self._formatted() and self._protected(self.cursor):
+            nxt = self._next_input(pos)             # field full: on to the next one
+            if nxt is not None:
+                self.cursor = nxt
+                return 1, True
+        return 1, self.cursor != pos + 1            # an autoskip field jumped ahead
+
+    def _next_input(self, pos: int) -> int | None:
+        """First data position of the next input field after ``pos``, not
+        wrapping past the bottom of the screen; None when there is none."""
+        if not self._formatted():
+            return pos + 1 if pos + 1 < self.size else None
+        for p in range(pos + 1, self.size - 1):
+            a = self.fa[p]
+            if a is not None and not a & FA_PROTECT and self.fa[p + 1] is None:
+                return p + 1
+        return None
+
+    def _paste_newline(self) -> bool:
+        row_start = (self.cursor // self.cols + 1) * self.cols
+        if row_start >= self.size:
+            return False
+        nxt = row_start if not self._formatted() else self._next_input(row_start - 1)
+        if nxt is None:
+            return False
+        self.cursor = nxt
+        return True
+
     def _type_char(self, ch: str) -> bool:
         if self.locked:
             return self._refuse(self.lock_reason)
@@ -497,10 +583,16 @@ class IBM3270(Emulation):
             return self._refuse("Symbol")
         if len(code) != 1 or code[0] < 0x40:
             return self._refuse("Symbol")
+        return self._type_code(code[0], ch)
+
+    def _type_code(self, code: int, ch: str = "") -> bool:
+        """Put one EBCDIC character at the cursor, as the keyboard would."""
         pos = self.cursor
         if self._protected(pos):
             return self._refuse("Protected")
         start = self.field_start(pos)
+        if start is not None and self.fa[start] & FA_NUMERIC and ch and ch not in NUMERIC_KEYS:
+            return self._refuse("NUM")             # numeric lock: digits, . , - only
         if self.insert:
             span = [p % self.size for p in (self._field_range(start) if start is not None
                                             else range(self.size))]
@@ -509,7 +601,7 @@ class IBM3270(Emulation):
                 return self._refuse("Overflow")
             for a, b in zip(reversed(tail[1:]), reversed(tail[:-1])):
                 self.buf[a], self.cx[a] = self.buf[b], self.cx[b]
-        self.buf[pos] = code[0]
+        self.buf[pos] = code
         self.message = ""
         if start is not None:
             self.fa[start] |= FA_MDT

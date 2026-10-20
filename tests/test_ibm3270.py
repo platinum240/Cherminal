@@ -371,3 +371,82 @@ def test_tls_connection(tls_server, tmp_path):
         assert "SECURE" in session.screen.text()
     finally:
         session.disconnect()
+
+
+# A form with three input fields: two 5-character fields on row 3 (between
+# protected labels), a numeric field on row 5 and an 8-character field on
+# the last row.
+FORM = (b"\xf5\xc3"
+        + b"\x11" + addr(2, 0) + b"\x1d\x60" + e("A") + b"\x1d\x40" + b"\x13" + b"\x00" * 5
+        + b"\x1d\x60" + e("B") + b"\x1d\x40" + b"\x00" * 5 + b"\x1d\x60"
+        + b"\x11" + addr(4, 0) + b"\x1d\x60" + e("NUM") + b"\x1d\x50" + b"\x00" * 4
+        + b"\x1d\x60"
+        + b"\x11" + addr(23, 0) + b"\x1d\x60" + e("CMD") + b"\x1d\x40" + b"\x00" * 8
+        + b"\x1d\x60" + e("END"))
+
+
+def test_paste_fills_fields_and_wraps_into_the_next():
+    em, screen, _ = emu()
+    em.feed(record(FORM))
+    assert em.cursor == 2 * 80 + 3
+    assert em.paste_text("abcdefgh") == 8               # 5 in field A, 3 run on into B
+    assert cells(screen, 2, 3, 8) == "abcde"
+    assert cells(screen, 2, 8, 11) == " B "              # the protected label is untouched
+    assert cells(screen, 2, 11, 16) == "fgh  "
+    assert em.cursor == 2 * 80 + 14
+
+
+def test_paste_newline_moves_to_the_next_rows_field():
+    em, screen, _ = emu()
+    em.feed(record(FORM))
+    assert em.paste_text("ab\r\n123\nlogon\n") == 10
+    assert cells(screen, 2, 3, 8) == "ab   "
+    assert cells(screen, 2, 11, 16) == "     "         # B is on the same row: skipped
+    assert cells(screen, 4, 5, 9) == "123 "
+    assert cells(screen, 23, 5, 13) == "logon   "
+    # A line that exactly fills its field does not skip a field at its line break.
+    em.do_action("erase-input")
+    assert em.paste_text("12345\nxyz") == 8
+    assert cells(screen, 2, 3, 8) == "12345" and cells(screen, 2, 11, 14) == "xyz"
+
+
+def test_paste_respects_numeric_fields():
+    em, screen, _ = emu()
+    em.feed(record(FORM))
+    assert em.paste_text("a\n12x4") == 3                # stops at the letter
+    assert cells(screen, 4, 5, 9) == "12  "
+    assert "X NUM" in em.status
+    em.cursor = 4 * 80 + 5
+    em.type_text("z")                                   # typing obeys the same rule
+    assert cells(screen, 4, 5, 6) == "1"
+
+
+def test_paste_stops_when_input_fields_run_out():
+    em, screen, sent = emu()
+    em.feed(record(FORM))
+    em.cursor = 23 * 80 + 5
+    assert em.paste_text("0123456789") == 8
+    assert cells(screen, 23, 5, 13) == "01234567"
+    assert screen.line_text(23).endswith("END")         # protected text never overtyped
+    assert cells(screen, 2, 3, 8) == "     "           # no wrap round to the top field
+    assert "Overflow" in em.status
+    # Pasting from a protected position starts in the next input field.
+    em.do_action("erase-input")
+    em.cursor = 0
+    assert em.paste_text("hi") == 2 and cells(screen, 2, 3, 5) == "hi"
+    assert sent == []                                   # paste never sends anything
+
+
+def test_paste_unformatted_screen_and_session_hook(tmp_path):
+    em, screen, _ = emu()
+    em.feed(record(b"\xf5\xc2"))
+    em.cursor = 23 * 80 + 78
+    assert em.paste_text("abcd") == 2                   # stops at the bottom right
+    assert screen.line_text(23).endswith("ab")
+    assert screen.line_text(0).strip() == ""
+    s = Session(SessionProfile(transport="telnet", host="h", emulation="ibm3278-2"),
+                ProfileStore(tmp_path, site_roots=[]))
+    s.feed(record(LOGON))
+    s.paste("tso1\nsecret\n")
+    assert cells(s.screen, 0, 13, 17) == "tso1"
+    assert s.emulation.buf[80 + 16:80 + 22] == list(e("secret"))

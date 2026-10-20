@@ -190,7 +190,12 @@ class Session:
     def paste(self, text: str) -> None:
         text = text.replace("\r\n", "\r").replace("\n", "\r")
         if self.emulation.block_mode:
-            self.send_text(text.rstrip("\r"))
+            paste = getattr(self.emulation, "paste_text", None)
+            if paste is None:
+                self.send_text(text.rstrip("\r"))
+            else:
+                with self.lock:
+                    paste(text)                 # fills input fields, skips protected ones
             return
         if self.emulation.bracketed_paste:
             text = "\x1b[200~" + text + "\x1b[201~"

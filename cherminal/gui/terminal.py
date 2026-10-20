@@ -359,6 +359,8 @@ class TerminalWidget(QWidget):
         text = cb.text(mode or QClipboard.Mode.Clipboard)
         if text:
             self.session.paste(text)
+            if self.session.emulation.block_mode:
+                self._on_update()               # a local edit: repaint and refresh the OIA
 
     def copy(self) -> None:
         text = self.selected_text()
