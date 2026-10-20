@@ -15,6 +15,7 @@ from ..config import ProfileStore, SessionProfile
 from ..keymap import Binding
 from ..session import Session
 from .dialogs import SessionColoursDialog, SessionEditor, SessionManager
+from .icons import app_icon, logo
 from .search import SearchBar
 from .terminal import TerminalWidget
 
@@ -90,9 +91,16 @@ class MainWindow(QMainWindow):
                      "Ctrl+Shift+P")
         self._action(s, "&Reset terminal", lambda: self._run("reset"))
         h = mb.addMenu("&Help")
-        self._action(h, "&About Cherminal", lambda: QMessageBox.about(
-            self, "About Cherminal",
-            f"Cherminal {__version__}\nTerminal emulation for host connections on Linux."))
+        self._action(h, "&About Cherminal", self.about)
+
+    def about(self) -> None:
+        box = QMessageBox(self)
+        box.setWindowTitle("About Cherminal")
+        dark = self.palette().window().color().lightness() < 128
+        box.setIconPixmap(logo(dark))
+        box.setText(f"Cherminal {__version__}")
+        box.setInformativeText("Terminal emulation for host connections on Linux.")
+        box.exec()
 
     # ------------------------------------------------------------ sessions
 
@@ -236,6 +244,8 @@ def run(profiles: list[SessionProfile], store: ProfileStore, show_manager: bool,
         limited: bool = False) -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("Cherminal")
+    app.setDesktopFileName("cherminal")   # matches cherminal.desktop for the taskbar icon
+    app.setWindowIcon(app_icon())
     win = MainWindow(store, limited=limited)
     # Every way out (last window closed, Ctrl+C, kill, logout) closes the
     # connections cleanly rather than leaving it to process teardown.
