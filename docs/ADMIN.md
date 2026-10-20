@@ -124,7 +124,8 @@ setting is in `packaging/elux/policy.toml.example` (installed on eLux as
 |---|---|---|
 | `limited` | `false` | Always run in limited mode ([section 5](#5-locking-a-workstation-down)). |
 | `allowed_transports` | all | The kinds of connection users may open: `ssh`, `telnet`, `serial`, `local`. Sessions using others are hidden and refused. |
-| `file_upload` | `true` | `false` turns off SFTP upload (drag and drop) even where a session enables it. |
+| `file_upload` | `true` | `false` turns off SFTP upload (drag and drop) and IND$FILE sending to a mainframe. |
+| `file_download` | `true` | `false` turns off IND$FILE receiving from a mainframe. |
 | `print_to_file` | `true` | `false` makes Print screen offer printers only, never a PDF file. |
 | `require_tls` | `false` | Telnet, TN3270 and TN5250 only over TLS. |
 | `require_tls_verify` | `false` | TLS sessions must check the host's certificate. |
@@ -154,7 +155,10 @@ cherminal --limited "Mainframe A" "Payroll"
 In limited mode the File menu offers only **Close tab** and **Exit**. Users
 can't open the session list to edit, create or delete sessions, can't use
 Quick connect or start a local shell, can't pick local files to upload, and
-can't print to a PDF file. Started with no session names, it shows the
+can't print to a PDF file. IND$FILE transfer is off in limited mode unless
+the policy says `file_upload = true` or `file_download = true` in so many
+words, and then it only reads and writes files directly in the user's
+Downloads folder, with no file browser. Started with no session names, it shows the
 available sessions with only a **Connect** button. Users can still copy,
 paste, search, change colours for the current session, print to a printer
 and reconnect.
@@ -327,7 +331,42 @@ Connection tab (`device_name = "SHOP01"`, up to 10 characters A-Z, 0-9,
 `@ # $ _`). The system value QAUTOVRT must allow IBM i to create it. No user
 name or password is sent this way.
 
-Both default to EBCDIC code page 037. Set another (`cp500`, `cp273`,
+**LU names (TN3270E).** Leave **LU name** empty and Cherminal uses plain
+TN3270, with the host picking the terminal. Where your site gives each
+workstation or printer its own LU, fill it in (`lu_name = "TSO0042"`, up to
+8 characters); Cherminal then negotiates TN3270E and asks for that LU. If
+the host refuses it, the session says why.
+
+**3287 printer sessions.** A session with emulation `ibm3287-1` connects to
+a printer LU and prints what the mainframe sends, with no user and no
+dialogs: SCS and 3270 print data become text pages sent to the session's
+printer (Printing tab) through CUPS, or the default printer. Start it
+alongside the display session, for example from the same launcher.
+Printer sessions are never disconnected by the idle timeout; turn on
+`auto_reconnect` for them so they come back after a network drop.
+
+```toml
+name = "Payroll printer"
+transport = "telnet"
+host = "mvs.example.com"
+emulation = "ibm3287-1"
+lu_name = "PRT0042"
+printer = "payroll-laser"
+auto_reconnect = true
+```
+
+**File transfer (IND$FILE).** Session › Transfer file… sends or receives a
+file with IBM's IND$FILE program, which must be installed on the host, for
+TSO, CICS and VM/CMS. `file_upload = false` and `file_download = false` in
+the policy turn each direction off. The idle timeout doesn't fire while a
+transfer runs.
+
+**Paste and clickable keys.** Pasting into a 3270 screen fills input
+fields only, and stops at a numeric field that would get letters. Key
+names on the screen, such as `PF3=Exit` and `ENTER`, can be clicked; turn
+that off per session with `hotspots = false`.
+
+Both 3270 and 5250 default to EBCDIC code page 037. Set another (`cp500`, `cp273`,
 `cp1140`, ...) under Terminal › Character set if your system uses one. Use
 TLS on port 992 where the host offers it ([section 6](#6-tls-and-certificates)).
 
@@ -396,6 +435,7 @@ default.
 | `tls` | `false` | Telnet/TN3270/TN5250 over TLS. |
 | `tls_verify` | `true` | Check the host's certificate. |
 | `device_name` | | TN5250 device name, up to 10 of A-Z 0-9 @ # $ _. |
+| `lu_name` | | TN3270E LU to connect to (display or printer), up to 8 characters. |
 | `username` | your login | SSH user name. |
 | `identity_file` | | SSH private key file. |
 | `ask_login` | `false` | SSH: ask for user name and password when connecting. |
@@ -404,7 +444,7 @@ default.
 | `command` | login shell | Local shell: program to run. |
 | `serial_device` | `"/dev/ttyUSB0"` | Serial port. |
 | `baud`, `data_bits`, `parity`, `stop_bits`, `flow_control` | `9600`, `8`, `"none"`, `1`, `"none"` | Serial line settings; parity `none`/`even`/`odd`/`mark`/`space`, flow control `none`/`xonxoff`/`rtscts`. |
-| `emulation` | `"vt220"` | Terminal type, for example `vt100`, `xterm`, `wyse60`, `ibm3278-2`, `ibm3179-2`. |
+| `emulation` | `"vt220"` | Terminal type, for example `vt100`, `xterm`, `wyse60`, `ibm3278-2`, `ibm3179-2`, or `ibm3287-1` for a printer session. |
 | `encoding` | emulation's | Character set, for example `cp037`, `latin-1`. |
 | `cols`, `rows` | `80`, `24` | Screen size. |
 | `scrollback` | `2000` | Lines kept above the screen. |
@@ -419,7 +459,8 @@ default.
 | `local_echo` | `false` | Show typed characters locally. |
 | `enter_sends` | `"cr"` | `cr`, `crlf` or `lf`. |
 | `resize_mode` | `"scale"` | `scale` (text fits the window) or `grow` (add rows and columns). |
-| `printer` | ask | CUPS printer to use without asking. |
+| `hotspots` | `true` | 3270: click key names such as `PF3=Exit` on the screen. |
+| `printer` | ask | CUPS printer to use without asking (and for 3287 printer sessions). |
 | `host_print` | `true` | VT: allow host passthrough printing. |
 | `keepalive` | `60` | Seconds between keep-alives; 0 = off. |
 | `auto_reconnect` | `false` | Reconnect after a dropped connection. |

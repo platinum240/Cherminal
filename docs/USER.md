@@ -97,6 +97,19 @@ function key.
 | Attention (5250) | Shift+Escape |
 | System Request (5250) | Alt+Print |
 
+On 3270 screens you can also:
+
+- **Click key names** shown on the screen, such as `PF3=Exit` or `ENTER`,
+  instead of pressing the key.
+- **Paste** a list into the screen: each line goes into the next input
+  field down, and protected text is never overwritten. If the paste stops
+  with `X NUM`, a number field was about to get letters.
+- **Transfer files** with Session › Transfer file…, if your mainframe has
+  IND$FILE. Get to the TSO `READY` prompt (or ISPF option 6, a clear CICS
+  screen, or the CMS command line) first, choose send or receive, the host
+  file name and your local file, and press the button. A progress window
+  shows how it goes.
+
 The status bar shows the terminal's state: `X System` or `X SYSTEM` while
 the host is busy (wait), `X Protected` or `X II` when you typed somewhere
 you can't (press Escape), and the cursor position.

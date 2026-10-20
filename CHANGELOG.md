@@ -8,6 +8,11 @@ Check what you are running with `cherminal --version` (or
 - IBM i: TN5250 with the IBM 3179-2, 5251-11 and 3477-FC display stations,
   a 5250 keyboard (Field Exit, Field+/−, Attention, SysReq, Roll Up/Down)
   and a fixed device name per session.
+- IBM 3270: IND$FILE file transfer (Session › Transfer file…) for TSO,
+  CICS and VM/CMS; paste that fills input fields and respects numeric
+  fields; clickable PF keys (`PF3=Exit`, `ENTER`, ...) on the screen;
+  TN3270E with LU names; and 3287 printer sessions that print mainframe
+  jobs through CUPS unattended. Policy: `file_download`.
 - Idle timeout: sessions disconnect after 15 minutes without typing or
   clicking and blank the screen and scrollback. Adjust or turn it off per
   session; the policy's `max_idle_timeout` caps it. **This is on by
