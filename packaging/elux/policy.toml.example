@@ -30,3 +30,28 @@
 # Extra CA certificates (PEM) to trust for TLS, such as an in-house CA that
 # signs the mainframes' certificates, so checking can stay on.
 # tls_ca_file = "/etc/cherminal/ca.pem"
+
+# Disconnect sessions after this many minutes without typing or clicking.
+# Sessions may use a shorter time, but not a longer one or none. Without
+# this, each session decides (15 minutes unless changed).
+# max_idle_timeout = 15
+
+# Let sessions reconnect by themselves after a dropped connection.
+# auto_reconnect = false
+
+# Session logs: "allowed" (each session decides; off unless turned on),
+# "never", or "always" (every session is logged).
+# session_logging = "allowed"
+
+# Where session logs go. %u is replaced with the user name. Default:
+# ~/.local/state/cherminal/logs
+# log_dir = "/var/log/cherminal/%u"
+
+# All session logs together are kept under this many MB; the oldest files
+# are deleted first.
+# log_total_mb = 10
+
+# Write a line to syslog/journald for each connection, disconnection and
+# failed connection: user, session, host, what happened and how long it
+# lasted. Never anything typed or shown in a session.
+# audit_log = true
