@@ -119,8 +119,14 @@ class Session:
         return policy.current().idle_timeout(self.profile.idle_timeout)
 
     def idle_left(self, now: float | None = None) -> float | None:
-        """Seconds until the idle timeout, or None when there is none."""
-        if not self.idle_limit:
+        """Seconds until the idle timeout, or None when there is none.
+
+        Printer sessions have no user, and a file transfer is activity."""
+        if not self.idle_limit or self.emulation.printer:
+            return None
+        transfer = getattr(self.emulation, "transfer", None)
+        if transfer is not None and not transfer.finished:
+            self.touch()
             return None
         now = time.monotonic() if now is None else now
         return self.idle_limit * 60 - (now - self.last_input)

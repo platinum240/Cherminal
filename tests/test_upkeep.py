@@ -229,6 +229,22 @@ def test_idle_time(tmp_path, monkeypatch):
     assert session(tmp_path, idle_timeout=0).idle_limit == 5
 
 
+def test_no_idle_timeout_for_printers_or_during_transfers(tmp_path):
+    printer = session(tmp_path, emulation="ibm3287-1")
+    printer.last_input -= 3600
+    assert printer.idle_left() is None
+    display = session(tmp_path, emulation="ibm3278-2")
+    display.last_input -= 3600
+
+    class Busy:
+        finished = False
+
+    display.emulation.transfer = Busy()
+    assert display.idle_left() is None            # a long transfer is not idleness
+    display.emulation.transfer.finished = True
+    assert display.idle_left() == 15 * 60         # and it counted as activity
+
+
 def test_auto_reconnect_needs_session_and_policy(tmp_path):
     assert not session(tmp_path).may_reconnect
     assert session(tmp_path, auto_reconnect=True).may_reconnect

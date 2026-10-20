@@ -14,8 +14,14 @@
 # The kinds of connection users may open: ssh, telnet, serial, local.
 # allowed_transports = ["telnet", "ssh"]
 
-# SFTP upload (drag and drop) even in sessions that turn it on.
+# SFTP upload (drag and drop) even in sessions that turn it on, and sending
+# files to a mainframe with IND$FILE.
 # file_upload = false
+
+# Receiving files from a mainframe with IND$FILE. In limited mode both IND$FILE
+# directions are off unless set to true here, and then only use files directly
+# in the user's Downloads folder.
+# file_download = false
 
 # Print screen to a PDF file instead of a printer.
 # print_to_file = false
