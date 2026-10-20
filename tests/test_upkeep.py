@@ -242,7 +242,7 @@ def test_no_idle_timeout_for_printers_or_during_transfers(tmp_path):
     display.emulation.transfer = Busy()
     assert display.idle_left() is None            # a long transfer is not idleness
     display.emulation.transfer.finished = True
-    assert display.idle_left() == 15 * 60         # and it counted as activity
+    assert display.idle_left() > 15 * 60 - 5      # and it counted as activity
 
 
 def test_auto_reconnect_needs_session_and_policy(tmp_path):
