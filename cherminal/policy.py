@@ -25,6 +25,7 @@ running unrestricted; check a file before deploying it with
     log_dir = "/var/log/cherminal/%u" # where session logs go (%u = user name)
     log_total_mb = 10                 # session logs never take more than this in all
     audit_log = true                  # connection log to syslog/journald (never keystrokes)
+    ssh_known_hosts_only = true       # SSH only to hosts whose keys the administrator added
 """
 
 from __future__ import annotations
@@ -57,6 +58,7 @@ class Policy:
     log_dir: str = ""
     log_total_mb: int = 10
     audit_log: bool = False
+    ssh_known_hosts_only: bool = False   # refuse SSH hosts whose keys aren't known
     source: str = field(default="", compare=False)   # where it was read from
 
     @classmethod
@@ -66,7 +68,7 @@ class Policy:
         if unknown:
             raise PolicyError(f"unknown policy setting(s): {', '.join(sorted(unknown))}")
         for key in ("limited", "file_upload", "print_to_file", "require_tls",
-                    "require_tls_verify", "auto_reconnect", "audit_log"):
+                    "require_tls_verify", "auto_reconnect", "audit_log", "ssh_known_hosts_only"):
             if key in data and not isinstance(data[key], bool):
                 raise PolicyError(f"{key} must be true or false")
         values = dict(data)

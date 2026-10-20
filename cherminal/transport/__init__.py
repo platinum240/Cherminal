@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from ..config import SessionProfile, config_dir
-from ..emulation import EMULATIONS
+from pathlib import Path
+
 from .. import policy
+from ..config import SessionProfile, config_dir, site_dirs
+from ..emulation import EMULATIONS
 from .base import Transport
+
+# Host keys every user trusts: the system's OpenSSH file, then a
+# known_hosts file in each shared setup folder.
+SYSTEM_KNOWN_HOSTS = Path("/etc/ssh/ssh_known_hosts")
 
 
 def from_profile(profile: SessionProfile, ask_password=None, confirm_host_key=None,
@@ -32,7 +38,10 @@ def _make(profile, ask_password, confirm_host_key, ask_login) -> Transport:
                             profile.identity_file, term=emu.term_type,
                             known_hosts=config_dir() / "known_hosts",
                             ask_password=ask_password, confirm_host_key=confirm_host_key,
-                            ask_login=ask_login if profile.ask_login else None)
+                            ask_login=ask_login if profile.ask_login else None,
+                            trusted_known_hosts=[SYSTEM_KNOWN_HOSTS]
+                            + [d / "known_hosts" for d in site_dirs()],
+                            strict=policy.current().ssh_known_hosts_only)
     if profile.transport == "serial":
         from .serial import SerialTransport
         return SerialTransport(profile.serial_device, profile.baud, profile.data_bits,

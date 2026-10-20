@@ -409,7 +409,7 @@ class SessionEditor(QDialog):
         bottom.addWidget(buttons)
         lay.addLayout(bottom)
         self._load(profile)
-        self.resize(560, 520)
+        self.resize(680, 540)
 
     # -------------------------------------------------------------- tabs
 

@@ -37,8 +37,13 @@ class SSHTransport(Transport):
                  known_hosts: Path | None = None,
                  ask_password: PasswordPrompt | None = None,
                  confirm_host_key: HostKeyPrompt | None = None,
-                 ask_login: LoginPrompt | None = None):
+                 ask_login: LoginPrompt | None = None,
+                 trusted_known_hosts: list[Path] | None = None, strict: bool = False):
         super().__init__()
+        # Host keys an administrator vouches for (read only), and whether a
+        # host not in any known_hosts file is refused instead of asked about.
+        self.trusted_known_hosts = trusted_known_hosts or []
+        self.strict = strict
         self.host, self.port = host, port
         self.username = username or os.environ.get("USER", "")
         self.identity_file = os.path.expanduser(identity_file) if identity_file else None
@@ -61,6 +66,11 @@ class SSHTransport(Transport):
 
         class AskPolicy(paramiko.MissingHostKeyPolicy):
             def missing_host_key(self, client, hostname, key):
+                if transport_self.strict:
+                    raise paramiko.SSHException(
+                        f"{hostname} is not a known host, and this computer's policy only "
+                        f"allows hosts whose keys the administrator has added. Key "
+                        f"fingerprint: {fingerprint(key)}")
                 if not transport_self.confirm_host_key(
                         hostname, key.get_name(), fingerprint(key), False):
                     raise paramiko.SSHException(f"host key for {hostname} was not accepted")
@@ -71,6 +81,9 @@ class SSHTransport(Transport):
 
         client = paramiko.SSHClient()
         client.load_system_host_keys()
+        for path in self.trusted_known_hosts:
+            if path.is_file():
+                client.load_system_host_keys(str(path))
         if self.known_hosts and self.known_hosts.exists():
             client.load_host_keys(str(self.known_hosts))
         client.set_missing_host_key_policy(AskPolicy())
