@@ -53,6 +53,8 @@ class SessionProfile:
     port: int = 0                     # 0 = transport default
     tls: bool = False                 # telnet: TLS (e.g. TN3270 on port 992)
     tls_verify: bool = True           # check the host's certificate
+    device_name: str = ""             # TN5250: workstation device name (NEW-ENVIRON DEVNAME)
+    lu_name: str = ""                 # 3270: TN3270E CONNECT to this LU (printer or display)
     username: str = ""
     identity_file: str = ""           # SSH private key
     ask_login: bool = False           # SSH: ask for user name and password on connect
@@ -87,6 +89,13 @@ class SessionProfile:
                                       # grow: keep the font, add rows/columns
     printer: str = ""                 # "" = choose in the print dialog each time
     host_print: bool = True           # VT: host may print via ESC [ 5 i (passthrough)
+    keepalive: int = 60               # seconds between keep-alives; 0 = off
+    auto_reconnect: bool = False      # reconnect by itself if the connection drops
+    idle_timeout: int = 15            # minutes without input before disconnecting; 0 = never
+    log_session: bool = False         # capture the session's text to a log file
+    log_file_kb: int = 1024           # start a new log file at this size
+    log_keep: int = 2                 # older log files kept; older ones are deleted
+    hotspots: bool = True             # 3270: click PF3=Exit and other key names on screen
     keys: dict[str, str] = field(default_factory=dict)
     macros: dict[str, str] = field(default_factory=dict)
 
@@ -99,6 +108,9 @@ class SessionProfile:
             raise ValueError("backspace must be 'del' or 'bs'")
         if self.enter_sends not in ("cr", "crlf", "lf"):
             raise ValueError("enter_sends must be cr, crlf or lf")
+        self.lu_name = self.lu_name.strip().upper()
+        if self.lu_name and not re.fullmatch(r"[A-Z0-9@#$]{1,8}", self.lu_name):
+            raise ValueError("an LU name is 1 to 8 letters, digits, @, # or $")
         if self.resize_mode not in ("scale", "grow"):
             raise ValueError("resize_mode must be scale or grow")
         for key in ("fg_color", "bg_color", "cursor_color"):
@@ -110,8 +122,17 @@ class SessionProfile:
             _check_hex(value)
         if not (self.min_contrast == 0 or 1 <= self.min_contrast <= 21):
             raise ValueError("min_contrast must be 0 (scheme default) or between 1 and 21")
-        if emulation.EMULATIONS[self.emulation].block_mode and self.transport != "telnet":
-            raise ValueError(f"{self.emulation} needs a telnet (TN3270) connection")
+        for key in ("keepalive", "idle_timeout", "log_keep"):
+            if getattr(self, key) < 0:
+                raise ValueError(f"{key} cannot be negative")
+        if self.log_file_kb < 16:
+            raise ValueError("log_file_kb must be at least 16")
+        emu = emulation.EMULATIONS[self.emulation]
+        if emu.block_mode and self.transport != "telnet":
+            kind = "TN5250" if emu.family == "ibm5250" else "TN3270"
+            raise ValueError(f"{self.emulation} needs a telnet ({kind}) connection")
+        if self.device_name and not re.fullmatch(r"[A-Z0-9@#$_]{1,10}", self.device_name):
+            raise ValueError("device name must be up to 10 characters: A-Z, 0-9, @ # $ _")
 
     @property
     def effective_port(self) -> int:
@@ -324,7 +345,7 @@ class ProfileStore:
         default = emulation.EMULATIONS[profile.emulation].keymap
         km = self.load_keymap_layers(profile.keymap or default)
         if emulation.EMULATIONS[profile.emulation].block_mode:
-            # 3270 keys are actions, not bytes; Enter/Backspace settings don't apply.
+            # 3270/5250 keys are actions, not bytes; Enter/Backspace settings don't apply.
             km.update(profile.keys)
             return km
         if profile.backspace == "bs":

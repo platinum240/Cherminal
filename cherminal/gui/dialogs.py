@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QKeyEvent, QPainter
+from PyQt6.QtCore import QRegularExpression, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QKeyEvent, QPainter, QRegularExpressionValidator
 from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox,
                              QFileDialog, QFontComboBox, QFormLayout, QGridLayout, QHBoxLayout,
                              QHeaderView, QLabel,
@@ -386,6 +386,8 @@ class SessionEditor(QDialog):
         self.transfer_tab = self._transfer_tab()
         tabs.addTab(self.transfer_tab, "File transfer")
         tabs.addTab(self._printing_tab(), "Printing")
+        tabs.addTab(self._upkeep_tab(), "Idle && reconnect")
+        tabs.addTab(self._logging_tab(), "Logging")
         self.tabs = tabs
         buttons = QDialogButtonBox()
         if connect_only:
@@ -407,7 +409,7 @@ class SessionEditor(QDialog):
         bottom.addWidget(buttons)
         lay.addLayout(bottom)
         self._load(profile)
-        self.resize(560, 520)
+        self.resize(680, 540)
 
     # -------------------------------------------------------------- tabs
 
@@ -422,6 +424,17 @@ class SessionEditor(QDialog):
         self.port = QSpinBox(maximum=65535, specialValueText="default")
         self.tls = QCheckBox("Use TLS (port 992 by default)")
         self.tls_verify = QCheckBox("Check the host's certificate")
+        self.device_name = QLineEdit(placeholderText="chosen by the host")
+        self.device_name.setMaxLength(10)
+        self.device_name.setValidator(QRegularExpressionValidator(
+            QRegularExpression("[A-Za-z0-9@#$_]{0,10}"), self.device_name))
+        self.device_name.setToolTip("IBM i workstation device name (up to 10 characters: "
+                                    "A-Z, 0-9, @ # $ _). Leave empty for a QPADEVnnnn "
+                                    "device chosen by the host.")
+        self.lu_name = QLineEdit(maxLength=8, placeholderText="any (the host chooses)")
+        self.lu_name.setToolTip("IBM 3270: connect to this LU (TN3270E). Needed for a "
+                                "particular printer or terminal LU; up to 8 letters, "
+                                "digits, @, # or $.")
         self.username = QLineEdit()
         self.ask_login = QCheckBox("Ask for user name and password when connecting")
         self.ask_login.setToolTip("For users whose login on this host isn't their "
@@ -450,6 +463,8 @@ class SessionEditor(QDialog):
                 ("Name", self.name, None), ("Connection", self.transport, None),
                 ("Host", self.host, {"ssh", "telnet"}), ("Port", self.port, {"ssh", "telnet"}),
                 ("Security", self.tls, {"telnet"}), ("", self.tls_verify, {"telnet"}),
+                ("Device name", self.device_name, {"telnet"}),
+                ("LU name", self.lu_name, {"telnet"}),
                 ("User", self.username, {"ssh"}), ("Login", self.ask_login, {"ssh"}),
                 ("Private key", ident_row, {"ssh"}),
                 ("Command", self.command, {"local"}),
@@ -467,6 +482,8 @@ class SessionEditor(QDialog):
         f = QFormLayout(w)
         self.emulation = QComboBox()
         self.emulation.addItems(list(emulation.EMULATIONS))
+        self.emulation.currentTextChanged.connect(
+            lambda _: self._transport_changed(self.transport.currentText()))
         self.encoding = QComboBox(editable=True)
         self.encoding.addItems(ENCODINGS)
         self.encoding.setItemText(0, "")
@@ -479,6 +496,10 @@ class SessionEditor(QDialog):
         self.font_size = QSpinBox(minimum=5, maximum=72)
         self.answerback = QLineEdit()
         self.local_echo = QCheckBox("Echo typed characters locally")
+        self.hotspots = QCheckBox("IBM 3270: click PF3=Exit, ENTER and other key names "
+                                  "on the screen")
+        self.hotspots.setToolTip("Key names the host shows become links: hovering shows a "
+                                 "pointing hand, clicking presses that key.")
         self.enter_sends = QComboBox()
         self.enter_sends.addItems(["cr", "crlf", "lf"])
         self.resize_mode = QComboBox()
@@ -490,7 +511,7 @@ class SessionEditor(QDialog):
                               ("Font size", self.font_size),
                               ("Answerback", self.answerback), ("Enter sends", self.enter_sends),
                               ("When the window resizes", self.resize_mode),
-                              ("", self.local_echo)):
+                              ("", self.local_echo), ("", self.hotspots)):
             f.addRow(label, widget)
         return w
 
@@ -515,7 +536,9 @@ class SessionEditor(QDialog):
         hint = QLabel("Values use \\e for Esc, \\r Enter, \\xHH bytes, ^A control keys, or "
                       "action:paste / action:copy / action:break / action:macro:NAME. "
                       "IBM 3270 keys: action:enter, action:pf1-pf24, action:pa1-pa3, "
-                      "action:clear, action:reset and the others in the README.")
+                      "action:clear, action:reset and the others in the README. "
+                      "IBM 5250 keys: action:enter, action:f1-f24, action:field-exit, "
+                      "action:attn, action:sysreq, action:roll-up/roll-down.")
         hint.setWordWrap(True)
         hint.setFont(QFont(hint.font().family(), max(7, hint.font().pointSize() - 1)))
         lay.addWidget(QLabel("Key overrides for this session"))
@@ -580,6 +603,76 @@ class SessionEditor(QDialog):
         lay.addStretch()
         return w
 
+    def _upkeep_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        f = QFormLayout()
+        rules = policy.current()
+        self.idle_timeout = QSpinBox(minimum=0, maximum=24 * 60, suffix=" minutes",
+                                     specialValueText="Never")
+        self.idle_timeout.setToolTip("Disconnect when nobody has typed or clicked in the "
+                                     "session for this long. The screen is blanked and "
+                                     "Enter connects again.")
+        if rules.max_idle_timeout:
+            self.idle_timeout.setRange(1, rules.max_idle_timeout)
+            self.idle_timeout.setToolTip(f"This computer's policy allows at most "
+                                         f"{rules.max_idle_timeout} minutes.")
+        self.keepalive = QSpinBox(minimum=0, maximum=3600, suffix=" seconds",
+                                  specialValueText="Off")
+        self.keepalive.setToolTip("Send a keep-alive this often when the session is quiet, "
+                                  "so firewalls don't drop it and a dead connection is "
+                                  "noticed.")
+        self.auto_reconnect = QCheckBox("Reconnect automatically if the connection drops")
+        if not rules.auto_reconnect:
+            self.auto_reconnect.setEnabled(False)
+            self.auto_reconnect.setToolTip("Turned off by this computer's policy")
+        f.addRow("Disconnect when idle for", self.idle_timeout)
+        f.addRow("Keep-alive every", self.keepalive)
+        f.addRow(self.auto_reconnect)
+        lay.addLayout(f)
+        note = QLabel("Typing and clicking count as activity; output from the host does not. "
+                      "A minute before an idle disconnect the status bar warns. Reconnecting "
+                      "happens only when the connection breaks, not when you log off or the "
+                      "idle timeout closes it, and it asks for a password again if the "
+                      "session needs one.")
+        note.setWordWrap(True)
+        lay.addWidget(note)
+        lay.addStretch()
+        return w
+
+    def _logging_tab(self) -> QWidget:
+        from ..sessionlog import log_dir
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        f = QFormLayout()
+        rules = policy.current()
+        self.log_session = QCheckBox("Keep a log of this session's text")
+        self.log_file_kb = QSpinBox(minimum=16, maximum=1024 * 1024, singleStep=256,
+                                    suffix=" KB")
+        self.log_keep = QSpinBox(minimum=0, maximum=99, suffix=" older files")
+        self.log_session.toggled.connect(self._log_toggled)
+        if rules.session_logging != "allowed":
+            self.log_session.setEnabled(False)
+            self.log_session.setToolTip("Set by this computer's policy")
+        f.addRow(self.log_session)
+        f.addRow("Start a new file at", self.log_file_kb)
+        f.addRow("Keep", self.log_keep)
+        lay.addLayout(f)
+        note = QLabel(
+            f"Logs go to {log_dir()}. The log has what the screen showed: lines as they "
+            f"scroll up and, on IBM screens, each screen as it is sent. Hidden fields such "
+            f"as passwords are left blank and keystrokes are never logged. Old files are "
+            f"deleted by themselves, and all session logs together are kept under "
+            f"{rules.log_total_mb} MB.")
+        note.setWordWrap(True)
+        lay.addWidget(note)
+        lay.addStretch()
+        return w
+
+    def _log_toggled(self, on: bool) -> None:
+        self.log_file_kb.setEnabled(on)
+        self.log_keep.setEnabled(on)
+
     def _open_keyboard_map(self) -> None:
         from .keyboard import KeyboardEditor
         try:
@@ -590,6 +683,7 @@ class SessionEditor(QDialog):
             return
         emu = emulation.EMULATIONS[profile.emulation]
         dlg = KeyboardEditor(base, self.keys.items(), block_mode=emu.block_mode,
+                             family=emu.family,
                              macros=list(self.macros.items()), store=self.store,
                              base_name=profile.keymap or emu.keymap, parent=self)
         if dlg.exec():
@@ -600,10 +694,20 @@ class SessionEditor(QDialog):
     def _transport_changed(self, kind: str) -> None:
         for widget, kinds in self._rows.values():
             self._form.setRowVisible(widget, kind in kinds)
+        self._form.setRowVisible(self.device_name, kind == "telnet" and self._is_5250())
+        if hasattr(self, "emulation"):          # LU names: IBM 3270 family only
+            emu = emulation.EMULATIONS.get(self.emulation.currentText())
+            self._form.setRowVisible(self.lu_name, kind == "telnet"
+                                     and getattr(emu, "tn3270", False))
         if hasattr(self, "transfer_tab"):
             ssh = kind == "ssh"
             self.transfer_box.setVisible(ssh)
             self.transfer_ssh_only.setVisible(not ssh)
+
+    def _is_5250(self) -> bool:
+        emu = emulation.EMULATIONS.get(self.emulation.currentText()) \
+            if hasattr(self, "emulation") else None
+        return emu is not None and emu.family == "ibm5250"
 
     def _browse_key(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Private key", "~/.ssh")
@@ -618,6 +722,8 @@ class SessionEditor(QDialog):
         self.port.setValue(p.port)
         self.tls.setChecked(p.tls)
         self.tls_verify.setChecked(p.tls_verify)
+        self.device_name.setText(p.device_name)
+        self.lu_name.setText(p.lu_name)
         rules = policy.current()
         locked = "Required by this computer's policy"
         if rules.require_tls:
@@ -642,6 +748,7 @@ class SessionEditor(QDialog):
         self.stop_bits.setCurrentText(f"{p.stop_bits:g}")
         self.flow.setCurrentText(p.flow_control)
         self.emulation.setCurrentText(p.emulation)
+        self._transport_changed(p.transport)
         self.encoding.setCurrentText(p.encoding)
         self.cols.setValue(p.cols)
         self.rows.setValue(p.rows)
@@ -651,6 +758,7 @@ class SessionEditor(QDialog):
         self.colours.load(p)
         self.answerback.setText(p.answerback)
         self.local_echo.setChecked(p.local_echo)
+        self.hotspots.setChecked(p.hotspots)
         self.enter_sends.setCurrentText(p.enter_sends)
         self.resize_mode.setCurrentIndex(max(0, self.resize_mode.findData(p.resize_mode)))
         self.keymap.setCurrentIndex(max(0, self.keymap.findData(p.keymap)))
@@ -661,6 +769,14 @@ class SessionEditor(QDialog):
             idx = self.printer.count() - 1
         self.printer.setCurrentIndex(max(0, idx))
         self.host_print.setChecked(p.host_print)
+        self._loaded = p           # settings the policy decides are saved unchanged
+        self.idle_timeout.setValue(rules.idle_timeout(p.idle_timeout))
+        self.keepalive.setValue(p.keepalive)
+        self.auto_reconnect.setChecked(p.auto_reconnect and rules.auto_reconnect)
+        self.log_session.setChecked(rules.logging(p.log_session))
+        self.log_file_kb.setValue(p.log_file_kb)
+        self.log_keep.setValue(p.log_keep)
+        self._log_toggled(self.log_session.isChecked())
         self.keys.set_items(p.keys)
         self.macros.set_items(p.macros)
 
@@ -676,6 +792,8 @@ class SessionEditor(QDialog):
             name=self.name.text().strip() or "Untitled", transport=self.transport.currentText(),
             host=self.host.text().strip(), port=self.port.value(),
             tls=self.tls.isChecked(), tls_verify=self.tls_verify.isChecked(),
+            device_name=self.device_name.text().strip().upper() if self._is_5250() else "",
+            lu_name=self.lu_name.text(),
             username=self.username.text().strip(), ask_login=self.ask_login.isChecked(),
             file_transfer=self.file_transfer.isChecked(),
             upload_dir=self.upload_dir.text().strip(),
@@ -690,9 +808,16 @@ class SessionEditor(QDialog):
             font_size=self.font_size.value(), **self.colours.settings(),
             keymap=self.keymap.currentData(), backspace=self.backspace.currentData(),
             answerback=self.answerback.text(), local_echo=self.local_echo.isChecked(),
+            hotspots=self.hotspots.isChecked(),
             enter_sends=self.enter_sends.currentText(),
             resize_mode=self.resize_mode.currentData(), printer=self._printer_name(),
-            host_print=self.host_print.isChecked(), keys=keys, macros=self.macros.items())
+            host_print=self.host_print.isChecked(), idle_timeout=self.idle_timeout.value(),
+            keepalive=self.keepalive.value(),
+            auto_reconnect=(self.auto_reconnect.isChecked() if self.auto_reconnect.isEnabled()
+                            else self._loaded.auto_reconnect),
+            log_session=(self.log_session.isChecked() if self.log_session.isEnabled()
+                         else self._loaded.log_session), log_file_kb=self.log_file_kb.value(),
+            log_keep=self.log_keep.value(), keys=keys, macros=self.macros.items())
 
     def _printer_name(self) -> str:
         text = self.printer.currentText().strip()

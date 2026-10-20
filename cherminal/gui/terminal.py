@@ -8,16 +8,23 @@ import threading
 from dataclasses import replace
 
 from PyQt6.QtCore import QObject, QRect, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import (QClipboard, QColor, QFont, QFontMetrics, QFontMetricsF, QGuiApplication, QKeyEvent,
-                         QMouseEvent, QPainter, QWheelEvent)
+from PyQt6.QtGui import (QClipboard, QColor, QCursor, QFont, QFontMetrics, QFontMetricsF,
+                         QGuiApplication, QKeyEvent, QMouseEvent, QPainter, QWheelEvent)
 from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu,
                              QMessageBox, QProgressDialog, QWidget)
 
 from .. import policy
+from ..emulation.hotspots import hotspot_at
+from ..keymap import Binding
 from ..screen import Attr
 from ..session import Session
 from .colors import ensure_contrast, resolve
 from .keys import key_name
+
+IDLE_CHECK_MS = 5000            # how often the idle timeout is checked
+IDLE_WARNING = 60               # seconds of warning before an idle disconnect
+RETRY_DELAYS = (2, 5, 10, 20, 30, 60)   # seconds between reconnect attempts
+MAX_RETRIES = 10
 
 
 class _Bridge(QObject):
@@ -28,6 +35,7 @@ class _Bridge(QObject):
     upload_progress = pyqtSignal(str, int, int)
     upload_done = pyqtSignal(str, object)       # error ("" = ok), remote paths
     print_data = pyqtSignal(bytes)              # a host passthrough print job
+    print_job = pyqtSignal(str)                 # a 3287 printer session's decoded job
 
 
 class TerminalWidget(QWidget):
@@ -63,6 +71,12 @@ class TerminalWidget(QWidget):
                                  and session.profile.transport == "ssh"
                                  and policy.current().file_upload)
         self.setAcceptDrops(self.transfer_enabled)
+        # Block-mode screens: PF3=Exit and the like can be clicked.
+        self.hotspots = (session.emulation.block_mode and session.profile.hotspots
+                         and not session.emulation.printer)
+        self.setMouseTracking(self.hotspots)
+        self._hot: tuple[int, int, int, str] | None = None     # row, start, end, action
+        self._hot_press: tuple[int, int, int, str] | None = None
         self._uploading = False
         self._cancel_upload = False
 
@@ -74,11 +88,28 @@ class TerminalWidget(QWidget):
         self.bridge.upload_done.connect(self._on_upload_done)
         self.bridge.print_data.connect(self._on_print_data)
         session.emulation.on_print_data = self.bridge.print_data.emit
+        if session.emulation.printer:
+            # 3287 printer session: jobs print as they end, without asking; a
+            # timer ends a job the host leaves open (see IBM3287.tick).
+            self.bridge.print_job.connect(self._on_print_job, Qt.ConnectionType.QueuedConnection)
+            session.emulation.on_job = self.bridge.print_job.emit
+            self._eoj = QTimer(self, interval=1000)
+            self._eoj.timeout.connect(self._printer_tick)
+            self._eoj.start()
         # Coalesce bursts of host output into at most ~60 repaints a second.
         self._repaint = QTimer(self, singleShot=True, interval=16)
         self._repaint.timeout.connect(self.update)
         session.on_action = self.do_action
         session.emulation.on_bell = QApplication.beep
+        # Connection upkeep: the idle timeout and reconnecting after a drop.
+        self.ended = False              # the connection is over; Enter reconnects
+        self.retries = 0
+        self._idle_warned = False
+        self._idle_timer = QTimer(self, interval=IDLE_CHECK_MS)
+        self._idle_timer.timeout.connect(self.check_idle)
+        self._idle_timer.start()
+        self._retry_timer = QTimer(self, singleShot=True)
+        self._retry_timer.timeout.connect(self.reconnect_now)
 
     # ------------------------------------------------------------ geometry
 
@@ -184,12 +215,21 @@ class TerminalWidget(QWidget):
             box["result"] = answer == QMessageBox.StandardButton.Yes
 
     def _on_update(self) -> None:
+        if self.session.connected and self.retries:
+            self.retries = 0
+            self.message.emit("Reconnected")
+        log_error = self.session.log_error or (self.session.log and self.session.log.error)
+        if log_error and log_error != getattr(self, "_shown_log_error", ""):
+            self._shown_log_error = log_error
+            self.message.emit(log_error.capitalize())
         s = self.session.screen
         if (s.cols, s.rows) != getattr(self, "_last_grid", (s.cols, s.rows)):
             self._apply_resize()            # the host changed the screen size
         self._last_grid = (s.cols, s.rows)
         if not self._repaint.isActive():
             self._repaint.start()
+        if self.hotspots and self.underMouse():
+            self._hover(self.mapFromGlobal(QCursor.pos()))      # the screen changed under it
         title = self.session.screen.title
         if title != self._last_title:
             self._last_title = title
@@ -197,9 +237,89 @@ class TerminalWidget(QWidget):
         self.status_changed.emit(self.status_text())
 
     def _on_closed(self, reason: str) -> None:
+        self.ended = True
+        left = self.session.idle_left()
+        if left is not None and left <= 0:
+            self.idle_disconnect()           # went idle while the link was down
+            return
         self.session.notice(reason)
-        self.status_changed.emit(f"Disconnected: {reason}")
+        if (self.session.dropped or self.retries) and self.session.may_reconnect \
+                and self.retries < MAX_RETRIES:
+            delay = RETRY_DELAYS[min(self.retries, len(RETRY_DELAYS) - 1)]
+            self.retries += 1
+            self.session.notice(f"Reconnecting in {delay} seconds (try {self.retries} of "
+                                f"{MAX_RETRIES}). Press Enter to reconnect now.")
+            self.status_changed.emit(f"Connection lost: {reason} · reconnecting in {delay} s")
+            self._retry_timer.start(delay * 1000)
+        else:
+            if self.retries:
+                self.session.notice(f"Could not reconnect after {self.retries} tries.")
+                self.retries = 0
+            self.session.notice("Press Enter to reconnect.")
+            self.status_changed.emit(f"Disconnected: {reason}")
         self.update()
+
+    def reconnect_now(self) -> None:
+        """Connect again in this tab, keeping the screen and the session's log."""
+        self._retry_timer.stop()
+        self.ended = False
+        self.session.forget_transport()
+        if self.session.emulation.block_mode:
+            with self.session.lock:
+                self.session.emulation.reset()   # the host paints a fresh screen
+        self.connect_session()
+
+    def check_idle(self) -> None:
+        if not self.session.connected:
+            return
+        left = self.session.idle_left()
+        if left is None:
+            return
+        if left <= 0:
+            self.idle_disconnect()
+        elif left <= IDLE_WARNING:
+            if not self._idle_warned:
+                self._idle_warned = True
+                self.message.emit(f"No input for a while: {self.session.profile.name} "
+                                  f"disconnects in {int(left)} seconds unless a key is pressed")
+        else:
+            self._idle_warned = False
+
+    def idle_disconnect(self) -> None:
+        """Close the connection and blank the screen and scrollback, so an
+        unattended terminal shows nothing."""
+        minutes = self.session.idle_limit
+        self._retry_timer.stop()
+        self.retries = 0
+        self.session.disconnect(reason=f"idle for {minutes} minutes")
+        with self.session.lock:
+            self.session.emulation.reset()
+            self.session.screen.wipe()
+        self.scroll_offset = 0
+        self.clear_selection()
+        self.ended = True
+        self.session.notice(f"Disconnected after {minutes} minutes without input. "
+                            f"Press Enter to reconnect.")
+        self.status_changed.emit(f"Disconnected: no input for {minutes} minutes")
+        self.message.emit(f"{self.session.profile.name} was disconnected after {minutes} "
+                          f"minutes without input")
+        self.update()
+
+    def user_disconnect(self) -> None:
+        self._retry_timer.stop()
+        self.retries = 0
+        if self.session.connected:
+            self.session.disconnect()
+            self.ended = True
+            self.session.notice("Disconnected. Press Enter to reconnect.")
+            self.status_changed.emit("Disconnected")
+            self.update()
+
+    def shutdown(self) -> None:
+        """The tab is closing: stop the timers and the connection."""
+        self._idle_timer.stop()
+        self._retry_timer.stop()
+        self.session.disconnect()
 
     def status_text(self) -> str:
         p = self.session.profile
@@ -217,6 +337,10 @@ class TerminalWidget(QWidget):
         return False   # keep Tab for the host
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
+        if self.ended and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.session.touch()
+            self.reconnect_now()
+            return
         named = key_name(event)
         if named is None:
             return
@@ -254,6 +378,8 @@ class TerminalWidget(QWidget):
         text = cb.text(mode or QClipboard.Mode.Clipboard)
         if text:
             self.session.paste(text)
+            if self.session.emulation.block_mode:
+                self._on_update()               # a local edit: repaint and refresh the OIA
 
     def copy(self) -> None:
         text = self.selected_text()
@@ -355,6 +481,21 @@ class TerminalWidget(QWidget):
         if print_screen(self, self, allow_file=allow_file):
             self.message.emit("Screen sent to the printer")
         self.setFocus()
+
+    def _printer_tick(self) -> None:
+        with self.session.lock:
+            self.session.emulation.tick()
+
+    def _on_print_job(self, text: str) -> None:
+        from .printing import print_text
+        emu = self.session.emulation
+        title = f"{self.session.profile.name} {emu.lu_name}".strip()
+        result = print_text(text, self.session.profile.printer, title)
+        with self.session.lock:
+            emu.print_result = result
+            emu._render()
+        self.message.emit(result)
+        self._on_update()
 
     def _on_print_data(self, data: bytes) -> None:
         from .printing import print_raw
@@ -485,8 +626,43 @@ class TerminalWidget(QWidget):
         col = max(0, min(s.cols, (int(pos.x()) - self.offset_x) // self.cw))
         return history - self.scroll_offset + row, col
 
+    # ------------------------------------------------------------- hotspots
+
+    def _hotspot(self, pos) -> tuple[int, int, int, str] | None:
+        """The clickable key name (PF3=Exit, ENTER, ...) under ``pos``."""
+        if not self.hotspots or self.scroll_offset:
+            return None
+        s = self.session.screen
+        x, y = int(pos.x()) - self.offset_x, int(pos.y()) - self.offset_y
+        if x < 0 or y < 0:
+            return None
+        row, col = y // self.ch, x // self.cw
+        if row >= s.rows or col >= s.cols:
+            return None
+        with self.session.lock:
+            spot = hotspot_at(self._line_text(s.lines[row]), col)
+        return (row, spot.start, spot.end, spot.action) if spot else None
+
+    def _hover(self, pos) -> None:
+        hot = self._hotspot(pos)
+        if hot != self._hot:
+            self._hot = hot
+            self.setCursor(Qt.CursorShape.PointingHandCursor if hot
+                           else Qt.CursorShape.IBeamCursor)
+            self.update()
+
+    def leaveEvent(self, event) -> None:
+        if self._hot:
+            self._hot = None
+            self.setCursor(Qt.CursorShape.IBeamCursor)
+            self.update()
+        super().leaveEvent(event)
+
     def mousePressEvent(self, event: QMouseEvent) -> None:
+        self.session.touch()
         if event.button() == Qt.MouseButton.LeftButton:
+            plain = event.modifiers() == Qt.KeyboardModifier.NoModifier
+            self._hot_press = self._hotspot(event.position()) if plain else None
             self.match = None
             self.sel_start = self.sel_end = self._cell_at(event.position())
             self.update()
@@ -497,8 +673,18 @@ class TerminalWidget(QWidget):
         if self.sel_start is not None and event.buttons() & Qt.MouseButton.LeftButton:
             self.sel_end = self._cell_at(event.position())
             self.update()
+        elif self.hotspots and not event.buttons():
+            self._hover(event.position())
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        press, self._hot_press = self._hot_press, None
+        if (press and event.button() == Qt.MouseButton.LeftButton and not self._sel_range()
+                and self._hotspot(event.position()) == press):
+            # A click (not a drag to select) on a key name presses that key.
+            self.clear_selection()
+            self.session.run_binding(Binding("action", press[3]))
+            self._on_update()
+            return
         text = self.selected_text()
         if text:
             QGuiApplication.clipboard().setText(text, QClipboard.Mode.Selection)
@@ -596,6 +782,13 @@ class TerminalWidget(QWidget):
                 if not (0 <= line_no < len(lines)):
                     continue
                 self._paint_line(p, row, line_no, lines[line_no], s.reverse_screen)
+            if self._hot and self.scroll_offset == 0:
+                row, start, end, _ = self._hot
+                if row < s.rows and end <= s.cols:
+                    fg, _ = self._colors(s.lines[row][start].attr, False, s.reverse_screen)
+                    p.setPen(fg)
+                    y = row * self.ch + self.ch - 1
+                    p.drawLine(start * self.cw, y, end * self.cw - 1, y)
             if s.cursor_visible and self.scroll_offset == 0:
                 rect = QRect(s.x * self.cw, s.y * self.ch, self.cw, self.ch)
                 cursor = QColor(*sch.cursor)

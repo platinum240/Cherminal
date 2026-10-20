@@ -27,7 +27,12 @@ class PasswordServer(paramiko.ServerInterface):
 
 
 @pytest.fixture
-def ssh_server():
+def ssh_server(ssh_host):
+    return ssh_host[0]
+
+
+@pytest.fixture
+def ssh_host():
     host_key = paramiko.RSAKey.generate(2048)
     srv = socket.create_server(("127.0.0.1", 0))
     port = srv.getsockname()[1]
@@ -45,7 +50,7 @@ def ssh_server():
             transports.append(t)
 
     threading.Thread(target=serve, daemon=True).start()
-    yield port
+    yield port, host_key
     srv.close()
     for t in transports:
         t.close()
@@ -122,3 +127,46 @@ def test_profile_wires_login_prompt():
     on = from_profile(SessionProfile(transport="ssh", host="h", ask_login=True), ask_login=ask)
     off = from_profile(SessionProfile(transport="ssh", host="h"), ask_login=ask)
     assert on.ask_login is ask and off.ask_login is None
+
+
+def test_admin_known_hosts_and_strict_policy(ssh_host, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("SSH_AUTH_SOCK", raising=False)
+    port, key = ssh_host
+    asked = []
+
+    def run(**kw):
+        t = SSHTransport("127.0.0.1", port, "chad", known_hosts=tmp_path / "mine",
+                         ask_password=lambda p: "secret",
+                         confirm_host_key=lambda *a: asked.append(a) or True, **kw)
+        done = threading.Event()
+        result = []
+        t.on_open = lambda: (result.append("open"), done.set())
+        t.on_close = lambda r: (result.append(r), done.set())
+        t.open()
+        assert done.wait(15)
+        t.close()
+        return result[0]
+
+    reason = run(strict=True)                     # unknown host: refused, never asked
+    assert "not a known host" in reason and not asked
+    site = tmp_path / "site_known_hosts"
+    site.write_text(f"[127.0.0.1]:{port} {key.get_name()} {key.get_base64()}\n")
+    assert run(strict=True, trusted_known_hosts=[site]) == "open"
+    assert not asked and not (tmp_path / "mine").exists()   # nothing saved, nothing asked
+
+
+def test_trusted_known_hosts_come_from_system_and_site_folders(tmp_path, monkeypatch):
+    from cherminal import policy
+    from cherminal.config import SessionProfile
+    from cherminal.transport import SYSTEM_KNOWN_HOSTS, from_profile
+    monkeypatch.setenv("CHERMINAL_SITE_DIR", str(tmp_path / "share"))
+    t = from_profile(SessionProfile(transport="ssh", host="h"))
+    assert t.trusted_known_hosts[0] == SYSTEM_KNOWN_HOSTS
+    assert tmp_path / "share" / "known_hosts" in t.trusted_known_hosts
+    assert not t.strict
+    policy.set_current(policy.Policy(ssh_known_hosts_only=True))
+    try:
+        assert from_profile(SessionProfile(transport="ssh", host="h")).strict
+    finally:
+        policy.set_current(policy.Policy())

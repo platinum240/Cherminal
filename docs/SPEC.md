@@ -52,7 +52,7 @@ it `UNVERIFIED` so it can be checked against real hardware or a manual.
 | Scripting | Expect-style login scripts | Later phase |
 | Hotspots | Clickable on-screen text (e.g. `F3=Exit`) that sends a key | Later phase |
 | IBM 3270 | Block-mode emulation over TN3270 (RFC 1576), 3278 models 2-5, 3279 colour, query replies | Present (`emulation/ibm3270.py`); TN3270E, printing and file transfer later |
-| IBM 5250 | Block-mode emulation for IBM i | Out of scope for now |
+| IBM 5250 | Block-mode emulation for IBM i over TN5250 (RFC 1205, 2877/4777 device names), 3179-2, 5251-11, 3477-FC | Present (`emulation/ibm5250.py`); printer sessions later |
 
 ## Architecture
 

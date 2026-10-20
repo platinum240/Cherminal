@@ -64,6 +64,21 @@ IBM3270_ACTIONS = (
     + [(f"pf{i}", f"PF{i}") for i in range(1, 25)]
     + [("copy", "Copy"), ("paste", "Paste"), ("print-screen", "Print screen")])
 
+IBM5250_ACTIONS = (
+    [("enter", "Enter"), ("field-exit", "Field Exit"), ("field-plus", "Field+"),
+     ("field-minus", "Field-"), ("reset", "Reset (after an error)"), ("attn", "Attention"),
+     ("sysreq", "System Request"), ("help", "Help"), ("roll-up", "Roll Up (page down)"),
+     ("roll-down", "Roll Down (page up)"), ("clear", "Clear"), ("print", "Print (host)"),
+     ("record-backspace", "Record Backspace"), ("dup", "Dup"), ("field-mark", "Field Mark"),
+     ("newline", "New line"), ("tab", "Next field"), ("backtab", "Previous field"),
+     ("home", "Home (first input field)"), ("field-end", "End of field"),
+     ("insert", "Insert mode"), ("erase", "Erase left"), ("delete", "Delete"),
+     ("erase-eof", "Erase to end of field"), ("erase-input", "Erase Input"),
+     ("up", "Cursor up"), ("down", "Cursor down"), ("left", "Cursor left"),
+     ("right", "Cursor right")]
+    + [(f"f{i}", f"F{i}") for i in range(1, 25)]
+    + [("copy", "Copy"), ("paste", "Paste"), ("print-screen", "Print screen")])
+
 DEFAULT, PLAIN, SEND = "<default>", "<plain>", "<send>"
 
 # Shorter names that fit on a key cap.
@@ -71,7 +86,10 @@ CAP_LABELS = {"reset": "Reset", "erase": "Erase", "tab": "Next fld", "backtab": 
               "home": "1st fld", "field-end": "End fld", "insert": "Insert",
               "erase-eof": "Erase EOF", "erase-input": "Erase inp", "newline": "New line",
               "up": "↑", "down": "↓", "left": "←", "right": "→", "scroll-up": "Scroll ↑",
-              "scroll-down": "Scroll ↓", "break": "Break", "print-screen": "Print"}
+              "scroll-down": "Scroll ↓", "break": "Break", "print-screen": "Print",
+              "field-exit": "Fld Exit", "field-plus": "Field+", "field-minus": "Field-",
+              "attn": "Attn", "sysreq": "SysReq", "roll-up": "Roll Up", "roll-down": "Roll Dn",
+              "print": "Host prt", "record-backspace": "Rec Bksp", "field-mark": "Fld Mark"}
 
 
 def describe(value: str | None, labels: dict[str, str]) -> str:
@@ -96,13 +114,17 @@ class KeyboardEditor(QDialog):
     UNIT = 46
 
     def __init__(self, base: Keymap, overrides: dict[str, str], *, block_mode: bool = False,
-                 macros: list[str] = (), store=None, base_name: str = "", parent=None):
+                 family: str = "", macros: list[str] = (), store=None, base_name: str = "",
+                 parent=None):
         super().__init__(parent)
         self.setWindowTitle("Keyboard map")
         self.base = base
         self.overrides = {normalize_key(k): v for k, v in overrides.items()}
         self.store, self.base_name = store, base_name
-        actions = IBM3270_ACTIONS if block_mode else GENERAL_ACTIONS
+        if family == "ibm5250":
+            actions = IBM5250_ACTIONS
+        else:
+            actions = IBM3270_ACTIONS if block_mode else GENERAL_ACTIONS
         actions = actions + [(f"macro:{m}", f"Macro: {m}") for m in macros]
         self.actions = actions
         self.labels = dict(actions)

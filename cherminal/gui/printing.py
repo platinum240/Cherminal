@@ -52,8 +52,16 @@ def render(printer: QPrinter, lines: list[str], title: str, family: str) -> None
         top = hm.height() * 2
         per_page = max(1, int((page.height() - top) // fm.lineSpacing()))
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-        for start in range(0, max(1, len(lines)), per_page):
-            if start:
+        # A form feed in the text starts a new page; long pages run over.
+        forms: list[list[str]] = [[]]
+        for line in lines:
+            parts = line.split("\f")
+            forms[-1].append(parts[0])
+            forms += [[part] for part in parts[1:]]
+        pages = [form[i:i + per_page] for form in forms
+                 for i in range(0, max(1, len(form)), per_page)]
+        for n, page_lines in enumerate(pages):
+            if n:
                 printer.newPage()
             p.setPen(Qt.GlobalColor.black)
             p.setFont(head)
@@ -62,7 +70,7 @@ def render(printer: QPrinter, lines: list[str], title: str, family: str) -> None
             p.drawText(band, Qt.AlignmentFlag.AlignRight, stamp)
             p.setFont(font)
             y = top + fm.ascent()
-            for line in lines[start:start + per_page]:
+            for line in page_lines:
                 p.drawText(0, int(y), line)
                 y += fm.lineSpacing()
     finally:
@@ -125,3 +133,26 @@ def print_raw(data: bytes, printer_name: str, parent=None) -> str:
     text = data.decode("latin-1").replace("\r\n", "\n").replace("\r", "\n").replace("\f", "\n")
     render(printer, text.split("\n"), "Host print job", "Monospace")
     return f"Printed a host print job on {printer.printerName()}"
+
+
+def print_text(text: str, printer_name: str, title: str = "Host print job") -> str:
+    """Print a decoded host job (a 3287 printer session) without asking
+    anything: through CUPS's lp, which lays out plain text itself, or else
+    with Qt on the session's printer or the default one. Returns a status
+    line; failures are reported there, never in a dialog."""
+    lp = shutil.which("lp")
+    if lp:
+        cmd = [lp, "-s", "-t", title] + (["-d", printer_name] if printer_name else [])
+        try:
+            subprocess.run(cmd, input=text.encode("utf-8"), check=True, timeout=60,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            return f"Printed {title} on {printer_name or 'the default printer'}"
+        except (OSError, subprocess.SubprocessError) as e:
+            err = getattr(e, "stderr", b"") or b""
+            return f"Print job failed: {err.decode(errors='replace').strip() or e}"
+    name = printer_name or QPrinterInfo.defaultPrinterName()
+    printer = make_printer(name)
+    if not name or not printer.isValid() or to_file(printer):
+        return "Print job dropped: no printer is set up on this machine"
+    render(printer, text.rstrip("\n").split("\n"), title, "Monospace")
+    return f"Printed {title} on {printer.printerName()}"

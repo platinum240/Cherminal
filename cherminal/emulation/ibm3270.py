@@ -10,13 +10,17 @@ Records arrive framed as the Telnet layer passes them: data bytes with 0xFF
 doubled and each record ended by IAC EOR. Each :meth:`reply` call sends one
 record; the Telnet layer adds the IAC EOR.
 
+IND$FILE file transfers (DFT mode) are in :mod:`.indfile`.
+
 References: IBM GA23-0059 "3270 Data Stream Programmer's Reference",
-RFC 1576 (TN3270), RFC 2355 (TN3270E, not negotiated here).
+RFC 1576 (TN3270), RFC 2355 (TN3270E: used when the session names an LU,
+with the record headers in :mod:`.tn3270e`).
 """
 
 from __future__ import annotations
 
 from ..screen import DEFAULT_ATTR, Attr, Cell
+from . import indfile, tn3270e
 from .base import Emulation
 
 # The largest 3270 data stream record kept. A full 27x132 screen with every
@@ -56,6 +60,9 @@ AID_PF = dict(zip(range(1, 25), [0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8,
                                  0xC9, 0x4A, 0x4B, 0x4C]))
 SHORT_READ = {AID_CLEAR, *AID_PA.values()}
 
+# What a numeric field accepts from the keyboard (the 3270 numeric lock).
+NUMERIC_KEYS = frozenset("0123456789.,-")
+
 # 6-bit values as sent in 12-bit addresses and field attributes.
 CODE_TABLE = bytes([
     0x40, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
@@ -89,17 +96,24 @@ class IBM3270(Emulation):
     term_type = "IBM-3278-2-E"
     telnet_type = "IBM-3278-2-E"
     keymap = "ibm3270"
+    family = "ibm3270"
     block_mode = True       # keys are edited locally and sent by attention keys
     fixed_size = True       # the host sets the grid; the window scales to it
+    tn3270 = True           # the IBM 3270 family: TN3270(E), LU names
     alternate = (80, 24)    # cols, rows for Erase/Write Alternate
 
     def __init__(self, screen, reply=None, encoding: str = "cp037", answerback: str = ""):
         super().__init__(screen, reply, encoding=encoding, answerback=answerback)
         screen.scrollback_limit = 0
+        # Every reply goes through the TN3270E framing (a no-op until agreed).
+        self.e = tn3270e.Framing(self.reply)
+        self.reply = self._reply_record
+        self.lu_name = ""
         self._rec = bytearray()
         self._rec_dropped = False
         self._iac = False
         self.on_status = lambda: None
+        self.transfer: indfile.DFTTransfer | None = None     # IND$FILE in progress
         self.reset()
 
     # ----------------------------------------------------------- state
@@ -138,6 +152,8 @@ class IBM3270(Emulation):
             parts.append("Insert")
         if self.message:
             parts.append(self.message)
+        if self.lu_name:
+            parts.append(f"LU {self.lu_name}")
         r, c = divmod(self.cursor, self.cols)
         parts.append(f"{r + 1:03d}/{c + 1:03d}")
         return "  ".join(parts)
@@ -193,7 +209,7 @@ class IBM3270(Emulation):
                 if b == EOR:
                     rec, self._rec = bytes(self._rec), bytearray()
                     if rec and not self._rec_dropped:
-                        self.process(rec)
+                        self._host_record(rec)
                     self._rec_dropped = False
                     continue
                 self._keep(b)                # IAC IAC -> one 0xFF
@@ -211,6 +227,24 @@ class IBM3270(Emulation):
 
     def feed_text(self, text: str) -> None:
         pass  # 3270 data is binary; see feed()
+
+    def set_tn3270e(self, device_type: str, lu_name: str, functions: tuple[int, ...]) -> None:
+        """TN3270E was agreed: records now carry headers. Called by the session."""
+        self.e.start(functions)
+        self.lu_name = lu_name
+        self.on_status()
+
+    def _host_record(self, rec: bytes) -> None:
+        if not self.e.active:
+            self.process(rec)
+            return
+        split = self.e.split(rec)
+        if split and split[0] == tn3270e.DT_3270_DATA and split[1]:
+            self.process(split[1])
+        self.e.ack()                    # nothing else to say (SSCP-LU, NVT: ignored)
+
+    def _reply_record(self, data: bytes) -> None:
+        self.e.send(self.e.wrap(data) if self.e.active else data)
 
     def process(self, rec: bytes) -> None:
         """Run one host record (a command and its data)."""
@@ -406,6 +440,8 @@ class IBM3270(Emulation):
                     self.reply(self._read_buffer(self.aid))
                 elif kind is not None:
                     self.reply(self._read_modified(self.aid))
+            elif sfid == indfile.SF_TRANSFER:               # IND$FILE (DFT)
+                self._transfer_data(data[i:i + length])
             elif sfid == 0x40 and len(body) >= 2:          # Outbound 3270DS
                 cmd = COMMANDS.get(body[1])
                 if cmd == CMD_EW:
@@ -433,10 +469,77 @@ class IBM3270(Emulation):
         modes = bytes([0x00, 0x01, 0x02])
         implicit = bytes([0x00, 0x00, 0x0B, 0x01, 0x00, 0x00, 0x50, 0x00, 0x18]) + \
             cols.to_bytes(2, "big") + rows.to_bytes(2, "big")
+        # Distributed Data Management: tells IND$FILE to use DFT transfers.
+        ddm = bytes(2) + indfile.BUFFER_SIZE.to_bytes(2, "big") * 2 + bytes([0x01, 0x01])
         replies = [(0x81, usable), (0x86, color), (0x87, highlight), (0x88, modes),
-                   (0xA6, implicit)]
+                   (0x95, ddm), (0xA6, implicit)]
         summary = sf(0x80, bytes([0x80] + [q for q, _ in replies]))
         return bytes([AID_SF]) + summary + b"".join(sf(q, b) for q, b in replies)
+
+    # ---------------------------------------------------- file transfer
+
+    def start_transfer(self, opts: indfile.TransferOptions, on_progress=None,
+                       on_done=None) -> indfile.DFTTransfer:
+        """Type the IND$FILE command into the input field and press Enter.
+
+        Raises ValueError when it cannot start (keyboard locked, no input
+        field, field too short) and OSError when the local file can't be
+        opened; the host then drives the transfer through :meth:`process`.
+        """
+        if self.transfer and not self.transfer.finished:
+            raise ValueError("a file transfer is already running")
+        if self.locked:
+            raise ValueError("the keyboard is locked; wait for the host or press Reset")
+        command = opts.command()
+        if self._prime_field() < len(command):
+            raise ValueError("there is no input field long enough for the IND$FILE command "
+                             "on this screen; go to a TSO READY prompt, a CICS transaction "
+                             "screen or the CMS command line first")
+
+        def done(ok: bool, message: str) -> None:
+            self.message = "" if ok else "X File transfer"
+            (on_done or (lambda ok, message: None))(ok, message)
+
+        self.transfer = indfile.DFTTransfer(opts, self.encoding,
+                                            on_progress or (lambda done, total: None), done)
+        for ch in command:
+            # $ is typed as X'5B' whatever the code page: IND$FILE's own name.
+            self._type_code(0x5B) if ch == "$" else self._type_char(ch)
+        self._attention(AID_ENTER)
+        self._render()
+        return self.transfer
+
+    def abort_transfer(self, reason: str) -> None:
+        """End a transfer locally, e.g. when the connection drops."""
+        if self.transfer and not self.transfer.finished:
+            self.transfer.finish(False, reason)
+
+    def _prime_field(self) -> int:
+        """Empty the input field at or after the cursor and put the cursor at
+        its start (like x3270 before a transfer); returns its length."""
+        if not self._formatted():
+            for p in range(self.cursor, self.size):
+                self.buf[p] = 0
+            return self.size - self.cursor
+        pos = self.cursor
+        if self._protected(pos):
+            pos = self._next_unprotected(pos)
+            if self._protected(pos):
+                return 0                            # no input fields at all
+        start = self.field_start(pos)
+        span = [p % self.size for p in self._field_range(start)]
+        for p in span:
+            self.buf[p], self.cx[p] = 0, (0, 0, 0)
+        self.cursor = span[0] if span else pos
+        return len(span)
+
+    def _transfer_data(self, sf: bytes) -> None:
+        if self.transfer is None:
+            return                                  # no transfer of ours: ignore
+        reply = self.transfer.handle(sf)
+        if reply:
+            self.aid = AID_SF
+            self.reply(reply)
 
     # ----------------------------------------------------------- reading
 
@@ -444,6 +547,8 @@ class IBM3270(Emulation):
         return bytearray([aid]) + encode_address(self.cursor, self.size)
 
     def _read_modified(self, aid: int) -> bytes:
+        if aid == AID_SF and self.transfer and self.transfer.saved:
+            return self.transfer.saved          # the host lost an IND$FILE reply
         if aid in SHORT_READ:
             return bytes([aid])
         out = self._header(aid)
@@ -487,6 +592,89 @@ class IBM3270(Emulation):
                 break
         self._render()
 
+    def paste_text(self, text: str) -> int:
+        """Type pasted text into the input fields; returns the characters placed.
+
+        Text fills the field the cursor is in and runs on into the next
+        unprotected field when one fills up; a line break moves to the first
+        input field on a following row, like Newline. Protected text is
+        skipped, never overtyped. Pasting stops, with the usual OIA message,
+        at a character a field refuses (a letter in a numeric field: X NUM),
+        and when the screen has no input fields left below the cursor, so it
+        never wraps round to the top and overtypes what was pasted first.
+        """
+        lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        while len(lines) > 1 and not lines[-1]:
+            lines.pop()                             # a trailing line break
+        placed, advanced = 0, False  # advanced: the last character filled a field
+        self._paste_full = False
+        for i, line in enumerate(lines):
+            if i and not advanced and not self._paste_newline():
+                if any(lines[i:]):
+                    self._refuse("Overflow")
+                break
+            advanced = False
+            for ch in line:
+                step = self._paste_char(ch)
+                if step is None:
+                    break
+                placed += step[0]
+                advanced = step[1]
+            else:
+                continue
+            break
+        self._render()
+        return placed
+
+    def _paste_char(self, ch: str) -> tuple[int, bool] | None:
+        """(characters placed, moved to the next field), or None to stop."""
+        if self._paste_full:
+            return self._refuse("Overflow") or None
+        if ch == "\t":
+            nxt = self._next_input(self.cursor)
+            if nxt is None:
+                return self._refuse("Overflow") or None
+            self.cursor = nxt
+            return 0, False
+        pos = self.cursor
+        if self._formatted() and self._protected(pos):
+            nxt = self._next_input(pos)
+            if nxt is None:
+                return self._refuse("Overflow") or None
+            self.cursor = pos = nxt
+        if not self._type_char(ch):
+            return None
+        if self.cursor <= pos:                      # wrapped past the bottom
+            self.cursor, self._paste_full = pos, True
+            return 1, True
+        if self._formatted() and self._protected(self.cursor):
+            nxt = self._next_input(pos)             # field full: on to the next one
+            if nxt is not None:
+                self.cursor = nxt
+                return 1, True
+        return 1, self.cursor != pos + 1            # an autoskip field jumped ahead
+
+    def _next_input(self, pos: int) -> int | None:
+        """First data position of the next input field after ``pos``, not
+        wrapping past the bottom of the screen; None when there is none."""
+        if not self._formatted():
+            return pos + 1 if pos + 1 < self.size else None
+        for p in range(pos + 1, self.size - 1):
+            a = self.fa[p]
+            if a is not None and not a & FA_PROTECT and self.fa[p + 1] is None:
+                return p + 1
+        return None
+
+    def _paste_newline(self) -> bool:
+        row_start = (self.cursor // self.cols + 1) * self.cols
+        if row_start >= self.size:
+            return False
+        nxt = row_start if not self._formatted() else self._next_input(row_start - 1)
+        if nxt is None:
+            return False
+        self.cursor = nxt
+        return True
+
     def _type_char(self, ch: str) -> bool:
         if self.locked:
             return self._refuse(self.lock_reason)
@@ -496,10 +684,16 @@ class IBM3270(Emulation):
             return self._refuse("Symbol")
         if len(code) != 1 or code[0] < 0x40:
             return self._refuse("Symbol")
+        return self._type_code(code[0], ch)
+
+    def _type_code(self, code: int, ch: str = "") -> bool:
+        """Put one EBCDIC character at the cursor, as the keyboard would."""
         pos = self.cursor
         if self._protected(pos):
             return self._refuse("Protected")
         start = self.field_start(pos)
+        if start is not None and self.fa[start] & FA_NUMERIC and ch and ch not in NUMERIC_KEYS:
+            return self._refuse("NUM")             # numeric lock: digits, . , - only
         if self.insert:
             span = [p % self.size for p in (self._field_range(start) if start is not None
                                             else range(self.size))]
@@ -508,7 +702,7 @@ class IBM3270(Emulation):
                 return self._refuse("Overflow")
             for a, b in zip(reversed(tail[1:]), reversed(tail[:-1])):
                 self.buf[a], self.cx[a] = self.buf[b], self.cx[b]
-        self.buf[pos] = code[0]
+        self.buf[pos] = code
         self.message = ""
         if start is not None:
             self.fa[start] |= FA_MDT

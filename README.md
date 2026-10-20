@@ -17,14 +17,21 @@ and no longer runs on current distributions. Cherminal is a clean-room
 replacement; see [docs/SPEC.md](docs/SPEC.md) for the feature scope, the
 sources it was derived from, and the architecture.
 
+Guides: [administrator guide](docs/ADMIN.md) (installing, shared setup,
+site policy, certificates, host keys, logging, eLux rollout) and
+[user guide](docs/USER.md).
+
 ## Features
 
 - **Emulations:** VT100, VT220, VT320, VT420, SCO ANSI, AT386, Linux console,
   xterm (256/true colour), Wyse 50, Wyse 60, TeleVideo 925/950, ADM-3A,
-  and IBM 3278/3279 models 2-5 for mainframes (TN3270).
+  IBM 3278/3279 models 2-5 for mainframes (TN3270/TN3270E), IBM 3287
+  printer sessions, and IBM 5250 display stations (3179-2, 5251-11,
+  3477-FC) for IBM i / AS/400 (TN5250).
 - **Connections:** SSH (keys, agent, password, host-key verification),
-  Telnet (TTYPE, NAWS, binary, echo/SGA, optional TLS), TN3270, serial
-  ports, local shell.
+  Telnet (TTYPE, NAWS, binary, echo/SGA, optional TLS), TN3270, TN3270E
+  (LU names), TN5250 (with a fixed device name if wanted), serial ports,
+  local shell.
 - **Key mapping:** per-emulation defaults, reusable keymap files with
   inheritance, per-session overrides, application cursor/keypad aware, a
   press-to-capture editor, and `action:` bindings (paste, break, macros).
@@ -39,8 +46,17 @@ sources it was derived from, and the architecture.
   a search bar that looks up or down through the screen and scrollback.
 - **File upload over SSH:** drop files on the window to send them to the
   host by SFTP, when the session allows it.
+- **Mainframe file transfer:** IND$FILE send and receive for TSO, CICS and
+  VM/CMS; field-aware paste and clickable PF keys on 3270 screens.
 - **Printing:** Print Screen to a local (CUPS) printer or PDF, for 3270 and
-  every other emulation, and host passthrough printing on VT sessions.
+  every other emulation, host passthrough printing on VT sessions, and
+  3287 printer sessions that print mainframe jobs unattended.
+- **Keep-alive, auto-reconnect and idle timeout:** keep-alives every 60
+  seconds, optional reconnecting after a dropped connection, and a 15-minute
+  idle disconnect by default that blanks the screen.
+- **Session logs that look after themselves:** optional text logs that
+  rotate at 1 MB and stay under 10 MB in all, plus a connection audit log to
+  syslog/journald for administrators.
 - **`cherminal-keycapture`:** records exactly what another emulator sends for
   each key, over Telnet, and saves it as a Cherminal keymap. This is how to
   carry an existing TinyTerm keyboard setup across.
@@ -240,7 +256,8 @@ printer = "front-desk"     # CUPS printer name; omit to ask each time
 host_print = true
 ```
 
-Mainframe-started printing to a 3287 printer LU (TN3270E) is not included.
+Mainframe print jobs to a printer LU use a 3287 printer session; see
+[Printer sessions](#printer-sessions-3287) below.
 
 ## IBM mainframes (TN3270)
 
@@ -280,8 +297,217 @@ The status bar shows the 3270 operator information: `X System` while the
 host has the keyboard locked, `X Protected` when typing outside an input
 field, `Insert`, and the cursor's row/column.
 
-Not yet supported: TN3270E (LU names, SysReq/Attn), 3287 printing, file
-transfer (IND$FILE), and 5250 (IBM i).
+Not yet supported: SysReq and Attn keys, IND$FILE's older CUT mode, DBCS
+(Asian) code pages. For IBM i, see the next section.
+
+### LU names and TN3270E
+
+Leave **LU name** (Connection tab, 3270 emulations only) empty and
+Cherminal connects as it always has, with plain TN3270: the host picks the
+terminal. Fill it in (up to 8 letters, digits, `@`, `#` or `$`) when your
+site gives each workstation, or each printer, its own LU: Cherminal then
+negotiates TN3270E (RFC 2355) and asks for that LU by name. If the host
+refuses it, the tab says why (the LU is in use, or the host does not know
+it). The status bar shows the LU once connected. A host without TN3270E
+(Hercules, for example) ignores the name and the session carries on with
+plain TN3270.
+
+```toml
+emulation = "ibm3278-2"
+lu_name = "TSO0042"
+```
+
+### Pasting into a 3270 screen
+
+Paste (right-click, Edit › Paste or the middle button) fills input fields
+as typing would, starting at the cursor. Text longer than the field runs on
+into the next input field, and a line break moves to the first input field
+on a following row, like the New line key, so a column of values pasted from
+a spreadsheet lands one per row. Protected text is skipped, never
+overwritten. A numeric field takes only digits and `.` `,` `-` (the 3270
+numeric lock, which typing obeys too): the paste stops at anything else with
+`X NUM` in the status bar, rather than pushing the rest of the text into the
+wrong fields. When no input fields are left below the cursor the paste stops
+with `X Overflow`; it never wraps round to the top of the screen. Nothing is
+sent until you press Enter or another attention key.
+
+### Clicking PF keys on the screen
+
+Key names on a 3270 screen work as buttons: `PF3=Exit`, `PF3 = Exit`,
+`F3=Exit`, `PF7`, `PA1`, `ENTER` and `CLEAR`. Hovering shows a pointing hand
+and underlines the key; a click presses it, just like the keyboard (dragging
+from one still selects text). Turn this off with "click PF3=Exit, ENTER and
+other key names" on the session's Terminal tab (`hotspots = false`).
+
+### Transferring files (IND$FILE)
+
+Session › Transfer file… (3270 display sessions only) sends a file to the
+mainframe or receives one with IBM's IND$FILE program, which must be
+installed on the host. First get to where a command can be typed: TSO
+`READY` (or ISPF option 6), a cleared CICS screen, or the CMS command line.
+Then choose:
+
+- **Direction:** send to the host (PUT) or receive from it (GET).
+- **Host system:** TSO, CICS or VM/CMS, which changes the command's syntax.
+- **Host file:** a TSO data set such as `'CHAD.REPORT.TEXT'` or
+  `'CHAD.JCL(PAYROLL)'`, a CICS file name such as `PAYROLL`, or a CMS file
+  such as `PROFILE EXEC A`.
+- **Local file**, **Text** (EBCDIC translated with the session's character
+  set; local files are UTF-8) or **Binary** (bytes unchanged), **CRLF**
+  (records end in CR LF; locally each line ends in LF) and **Append**.
+- For sending to TSO, a new data set's record format, LRECL, BLKSIZE and
+  space (tracks, cylinders or AVBLOCK); for CMS, record format and LRECL.
+
+The dialog shows the command it will type, for example:
+
+```text
+IND$FILE GET 'CHAD.REPORT.TEXT' ASCII CRLF                         (TSO)
+IND$FILE PUT 'CHAD.DATA' ASCII CRLF RECFM(V) LRECL(255) SPACE(5,5) TRACKS
+IND$FILE PUT PAYROLL (BINARY NOCRLF                                (CICS)
+IND$FILE PUT PROFILE EXEC A (ASCII CRLF RECFM V LRECL 80           (CMS)
+```
+
+Cherminal types it into the input field and presses Enter, then answers the
+host's DFT file-transfer requests, showing progress; Cancel stops the
+transfer at the host's next request. The host's closing message (such as
+`TRANS03 File transfer complete`) is shown at the end. Receiving over an
+existing file asks first. The site policy can forbid either direction (see
+`file_upload` and `file_download` below). In limited mode transfers are off
+unless the policy allows them in so many words, and then they only read and
+write files directly in the user's Downloads folder, chosen from a list or by
+name; no file browser opens.
+
+### Printer sessions (3287)
+
+A session with emulation `ibm3287-1` is a printer, not a terminal: it
+connects to a printer LU with TN3270E (give the LU name, or leave it empty
+to take any printer LU the host offers) and prints what the mainframe sends,
+unattended. SCS print data (LU type 1) and 3270 print data (LU type 3) are
+turned into text pages; a job ends when the host says so, or after five
+seconds without data, and goes straight to the session's printer
+(Printing tab) through CUPS, or to the default printer when none is set.
+No dialog ever appears mid-job. The tab shows the LU, whether it is
+connected, how many jobs have printed, and the start of the last one. Plain
+TN3270 local 3287 printers, such as a Hercules 3287 device, work too.
+
+```toml
+name = "Payroll printer"
+transport = "telnet"
+host = "mvs.example.com"
+emulation = "ibm3287-1"
+lu_name = "PRT0042"
+printer = "payroll-laser"
+```
+
+Open it like any other session (for example `cherminal "Payroll printer"`
+alongside the display session); it keeps printing while the tab is open.
+
+## IBM i (TN5250)
+
+Choose connection **telnet** and one of these emulations:
+
+| Emulation | Display station | Screen |
+|---|---|---|
+| `ibm3179-2` | IBM 3179 model 2 (colour) | 24×80 |
+| `ibm5251-11` | IBM 5251 model 11 (green screen) | 24×80 |
+| `ibm3477-fc` | IBM 3477 model FC (colour, wide) | 24×80 and 27×132 |
+
+`ibm3179-2` suits most systems. Use `ibm3477-fc` for programs that show
+132-column screens; the window switches size when the host asks. Port 23
+is the default; tick **Use TLS** for port 992 (secure Telnet on IBM i), with
+the same certificate checking and `tls_ca_file` site setting as TN3270.
+The character set defaults to EBCDIC code page 037; set e.g. `cp500`,
+`cp273` or `cp1140` under Terminal › Character set if the system uses
+another.
+
+**Device name.** IBM i normally gives each connection a new virtual device
+(`QPADEV0001`, ...). To pin a workstation to a fixed device, so that it gets
+the same job, output queue or subsystem routing each time, fill in **Device
+name** on the Connection tab (shown for 5250 emulations only): up to 10
+characters, A-Z, 0-9, `@ # $ _`. In a profile file it is
+`device_name = "SHOP01"`. It is sent as the NEW-ENVIRON `DEVNAME` variable
+(RFC 4777). The device is created on IBM i if the system value QAUTOVRT
+allows it. No user name or password is ever sent this way; you always sign
+on at the sign-on screen.
+
+Typing edits the screen locally and the AID keys send it. Typing a wrong
+character (a letter in a numeric field, outside an input field) inhibits
+the keyboard as on a real 5250: the status bar shows `X II` and the reason,
+and **Reset** (Escape) clears it. Error messages from the host appear on
+the error line and also need Reset. The default keyboard (built-in keymap
+`ibm5250`):
+
+| Key | 5250 key | Key | 5250 key |
+|---|---|---|---|
+| Enter | Enter | Keypad Enter | Field Exit |
+| Keypad + | Field+ | Keypad − | Field− (negative number) |
+| F1-F12 | F1-F12 | Shift+F1-F12 | F13-F24 |
+| PageUp | Roll Down (previous page) | PageDown | Roll Up (next page) |
+| Escape | Reset | Shift+Escape, Pause | Attention |
+| SysReq (Alt+Print) | System Request | Ctrl+Pause | Clear |
+| Ctrl+F1 | Help | Ctrl+D | Dup |
+| Tab / Shift+Tab | Next / previous field | Home | First input field |
+| End | End of field | Insert | Insert mode |
+| Backspace | Erase left | Delete | Delete |
+| Ctrl+End | Erase to end of field | Ctrl+Delete | Erase Input |
+| Shift+Enter | New line | Ctrl+Print | Print (host print key) |
+
+The Print key itself prints the screen locally, as for every session.
+Any key can be remapped with `action:` and one of `enter`, `f1`-`f24`,
+`field-exit`, `field-plus`, `field-minus`, `reset`, `attn`, `sysreq`,
+`help`, `roll-up`, `roll-down`, `clear`, `print`, `record-backspace`,
+`dup`, `field-mark`, `tab`, `backtab`, `home`, `newline`, `up`, `down`,
+`left`, `right`, `field-end`, `insert`, `erase`, `delete`, `erase-eof`,
+`erase-input`. Some PC 5250 users prefer Enter as Field Exit; put
+`Enter = "action:field-exit"` and e.g. `KeypadEnter = "action:enter"` in
+the session's key overrides, or in a keymap file with
+`inherit = "ibm5250"` to share it.
+
+The status bar shows the 5250 operator information: `X SYSTEM` while the
+host has the keyboard locked, `X II` and a reason when input is inhibited,
+`Insert`, `Message waiting`, and the cursor's row/column. Password
+(non-display) fields are never drawn, so they cannot be copied, searched or
+printed.
+
+Not yet supported for 5250: 5250 printer sessions, windows and pull-down
+menus drawn with structured fields (their text still shows), column
+separator lines, and the SysReq input line (SysReq goes straight to the
+host, which shows its System Request menu).
+
+## Idle timeout, keep-alive and reconnecting
+
+Settings are on the session's **Idle & reconnect** tab.
+
+- **Disconnect when idle for** (15 minutes unless changed): when nobody has
+  typed or clicked in the session for that long, Cherminal closes the
+  connection and blanks the screen and scrollback, so an unattended
+  terminal shows nothing. The status bar warns a minute before. Output from
+  the host doesn't count as activity. Set it to **Never** to turn it off,
+  unless the site policy caps it.
+- **Keep-alive every** (60 seconds): keeps quiet connections from being
+  dropped by firewalls and notices a dead link. SSH uses SSH keep-alives,
+  Telnet and TN3270 send a Telnet NOP, and both turn on TCP keep-alive.
+- **Reconnect automatically if the connection drops** (off): after a
+  network drop Cherminal tries again after 2, 5, 10, 20, 30 and then every
+  60 seconds, up to ten times. It doesn't reconnect when you log off, when
+  the host closes the session, or after an idle timeout. SSH sessions that
+  need a password ask for it again.
+
+Whenever a session has ended, press **Enter** in it to connect again.
+
+## Session logs
+
+Turn on **Keep a log of this session's text** on the session's **Logging**
+tab. Logs go to `~/.local/state/cherminal/logs/<session>.log`. A log holds
+what the screen showed: lines as they scroll up, what was left on the
+screen at the end and, for IBM 3270 sessions, each screen as it was sent
+to the host. Hidden fields such as passwords are left blank, and
+keystrokes are never logged.
+
+Logs clean up after themselves, for thin clients with little space. Each
+session starts a new file at 1 MB and keeps 2 older ones (both adjustable),
+and all session logs together are kept under 10 MB by deleting the oldest
+files. If the disk fills up, logging stops and the session carries on.
 
 ## Limited mode for shared workstations
 
@@ -311,12 +537,31 @@ optional; an empty file changes nothing.
 ```toml
 limited = true                    # always limited mode, as with --limited
 allowed_transports = ["telnet", "ssh"]
-file_upload = false               # no SFTP upload, whatever the session says
+file_upload = false               # no SFTP upload or IND$FILE send, whatever the session says
+file_download = false             # no IND$FILE receive from a mainframe
 print_to_file = false             # Print screen to printers only, never PDF
 require_tls = false               # Telnet/TN3270 only over TLS (off by default)
 require_tls_verify = false        # TLS must check the certificate (off by default)
 tls_ca_file = "/etc/cherminal/ca.pem"   # extra CA certificates to trust for TLS
+max_idle_timeout = 15             # minutes; sessions may be shorter, never longer or off
+auto_reconnect = false            # never reconnect by itself after a drop
+session_logging = "allowed"       # "allowed", "never" or "always"
+log_dir = "/var/log/cherminal/%u" # where session logs go (%u = user name)
+log_total_mb = 10                 # all session logs together stay under this
+audit_log = true                  # connection log to syslog/journald
+ssh_known_hosts_only = true       # SSH only to hosts whose keys you provided
 ```
+
+With `audit_log = true` each connection, disconnection and failed
+connection is written to syslog (journald) as one line with the user,
+session, host, what happened and how long it lasted, for example
+`user=chad session='Payroll' transport=telnet host=mf1:23 event=disconnected
+detail='closed by the user; after 0h42m10s'`. Nothing typed or shown in a
+session is ever in it. Read it with `journalctl -t cherminal`.
+
+In limited mode (`limited = true` or `--limited`) IND$FILE file transfer is
+off unless `file_upload = true` or `file_download = true` is written in the
+policy, and then it uses only files directly in each user's Downloads folder.
 
 The TLS settings are off by default so mainframes without TLS keep working;
 turn them on once every host supports it. Sessions the policy doesn't allow
