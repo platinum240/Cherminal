@@ -32,6 +32,8 @@ sources it was derived from, and the architecture.
   a search bar that looks up or down through the screen and scrollback.
 - **File upload over SSH:** drop files on the window to send them to the
   host by SFTP, when the session allows it.
+- **Printing:** Print Screen to a local (CUPS) printer or PDF, for 3270 and
+  every other emulation, and host passthrough printing on VT sessions.
 - **`cherminal-keycapture`:** records exactly what another emulator sends for
   each key, over Telnet, and saves it as a Cherminal keymap. This is how to
   carry an existing TinyTerm keyboard setup across.
@@ -193,6 +195,33 @@ button, and asks before replacing a file that already exists on the host.
 - Only the file's name is used on the host; folders are not uploaded.
 - An upload is written to `NAME.part` and renamed when complete, so a
   cancelled or broken upload never replaces a good file.
+
+## Printing
+
+**Print screen** prints what is on the screen as text, one page, with the
+session name and time at the top. Hidden fields such as passwords print
+blank. Use the Print (PrtSc) key, Ctrl+Shift+P, Session › Print screen… or
+the right-click menu; the key can be remapped like any other
+(`action:print-screen`). It works in limited mode.
+
+In a session's **Printing** tab:
+
+- **Printer:** with none chosen, Cherminal shows the print dialog each time,
+  which also offers saving a PDF. With a printer chosen (or a CUPS printer
+  name typed in), it prints straight to it without asking, which suits
+  shared and limited-mode thin clients.
+- **Let the host print to it:** VT sessions only. A host that sends
+  `ESC [ 5 i` … `ESC [ 4 i` (printer controller mode, as Unix applications
+  and TinyTerm's passthrough printing use) has that data sent unchanged to
+  the printer with `lp -o raw`, so printer codes such as PCL work. On by
+  default; turn it off to show the data on screen instead.
+
+```toml
+printer = "front-desk"     # CUPS printer name; omit to ask each time
+host_print = true
+```
+
+Mainframe-started printing to a 3287 printer LU (TN3270E) is not included.
 
 ## IBM mainframes (TN3270)
 

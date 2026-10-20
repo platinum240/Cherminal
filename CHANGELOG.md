@@ -3,6 +3,15 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.8.0
+
+- Print screen (Print key, Ctrl+Shift+P, Session menu, right-click) to a
+  local printer or PDF, with hidden fields left blank.
+- A session's Printing tab: a fixed printer to print to without asking, and
+  host passthrough printing (ESC [ 5 i … ESC [ 4 i) for VT sessions, sent raw
+  through CUPS.
+- The Print and SysReq keys can be mapped.
+
 ## 0.7.0
 
 - Colours for this session: change an open window's colours (scheme,

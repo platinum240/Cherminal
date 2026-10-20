@@ -385,6 +385,7 @@ class SessionEditor(QDialog):
         tabs.addTab(self._keyboard_tab(), "Keyboard && macros")
         self.transfer_tab = self._transfer_tab()
         tabs.addTab(self.transfer_tab, "File transfer")
+        tabs.addTab(self._printing_tab(), "Printing")
         self.tabs = tabs
         buttons = QDialogButtonBox()
         if connect_only:
@@ -553,6 +554,32 @@ class SessionEditor(QDialog):
         lay.addStretch()
         return w
 
+    def _printing_tab(self) -> QWidget:
+        from .printing import printer_names
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        f = QFormLayout()
+        self.printer = QComboBox(editable=True)
+        self.printer.addItem("(choose when printing)", "")
+        for name in printer_names():
+            self.printer.addItem(name, name)
+        self.printer.setToolTip("A printer set here is used without asking, which suits "
+                                "shared and limited-mode machines. Type a CUPS printer "
+                                "name if it isn't listed on this machine.")
+        self.host_print = QCheckBox("Let the host print to it (VT passthrough printing)")
+        f.addRow("Printer", self.printer)
+        f.addRow(self.host_print)
+        lay.addLayout(f)
+        note = QLabel("Print Screen (the Print key, Ctrl+Shift+P, Session › Print screen "
+                      "or the right-click menu) prints what is on the screen, hidden fields "
+                      "left blank. With no printer chosen here it asks each time and can "
+                      "also save a PDF. Passthrough jobs (ESC [ 5 i … ESC [ 4 i from the host) "
+                      "go to the printer unchanged through CUPS.")
+        note.setWordWrap(True)
+        lay.addWidget(note)
+        lay.addStretch()
+        return w
+
     def _open_keyboard_map(self) -> None:
         from .keyboard import KeyboardEditor
         try:
@@ -618,6 +645,12 @@ class SessionEditor(QDialog):
         self.resize_mode.setCurrentIndex(max(0, self.resize_mode.findData(p.resize_mode)))
         self.keymap.setCurrentIndex(max(0, self.keymap.findData(p.keymap)))
         self.backspace.setCurrentIndex(max(0, self.backspace.findData(p.backspace)))
+        idx = self.printer.findData(p.printer)
+        if idx < 0 and p.printer:
+            self.printer.addItem(p.printer, p.printer)
+            idx = self.printer.count() - 1
+        self.printer.setCurrentIndex(max(0, idx))
+        self.host_print.setChecked(p.host_print)
         self.keys.set_items(p.keys)
         self.macros.set_items(p.macros)
 
@@ -648,7 +681,15 @@ class SessionEditor(QDialog):
             keymap=self.keymap.currentData(), backspace=self.backspace.currentData(),
             answerback=self.answerback.text(), local_echo=self.local_echo.isChecked(),
             enter_sends=self.enter_sends.currentText(),
-            resize_mode=self.resize_mode.currentData(), keys=keys, macros=self.macros.items())
+            resize_mode=self.resize_mode.currentData(), printer=self._printer_name(),
+            host_print=self.host_print.isChecked(), keys=keys, macros=self.macros.items())
+
+    def _printer_name(self) -> str:
+        text = self.printer.currentText().strip()
+        if self.printer.currentIndex() >= 0 and self.printer.itemText(
+                self.printer.currentIndex()) == text:
+            return self.printer.currentData() or ""
+        return text                              # typed in by hand
 
     def _accept(self) -> None:
         try:

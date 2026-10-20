@@ -12,7 +12,7 @@ _NAMED = {
     K.Key_Insert: "Insert", K.Key_Delete: "Delete", K.Key_Backspace: "Backspace",
     K.Key_Tab: "Tab", K.Key_Backtab: "Tab", K.Key_Return: "Enter", K.Key_Enter: "KeypadEnter",
     K.Key_Escape: "Escape", K.Key_Space: "Space", K.Key_Pause: "Pause",
-    K.Key_Cancel: "Break",
+    K.Key_Cancel: "Break", K.Key_Print: "Print", K.Key_SysReq: "SysReq",
 }
 for _i in range(1, 25):
     _NAMED[getattr(K, f"Key_F{_i}")] = f"F{_i}"

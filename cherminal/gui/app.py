@@ -86,6 +86,8 @@ class MainWindow(QMainWindow):
         self._action(s, "&Reconnect", self.reconnect)
         self._action(s, "&Disconnect", lambda: self._term() and self._term().session.disconnect())
         self._action(s, "Send &Break", lambda: self._run("break"))
+        self._action(s, "&Print screen…", lambda: self._term() and self._term().print_screen(),
+                     "Ctrl+Shift+P")
         self._action(s, "&Reset terminal", lambda: self._run("reset"))
         h = mb.addMenu("&Help")
         self._action(h, "&About Cherminal", lambda: QMessageBox.about(

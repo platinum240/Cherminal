@@ -62,6 +62,41 @@ class VTEmulation(Emulation):
 
     # --------------------------------------------------------------- input
 
+    # Printer controller mode (VT102+ "passthrough" printing): everything
+    # between ESC [ 5 i and ESC [ 4 i goes to the local printer untouched.
+    # It is cut out at the byte level so printer codes (PCL, PostScript)
+    # survive whatever the session's character set is.
+    PRINT_ON, PRINT_OFF = b"\x1b[5i", b"\x1b[4i"
+    host_print = True
+
+    def feed(self, data: bytes) -> None:
+        data = self._held + data
+        self._held = b""
+        while data:
+            mark = self.PRINT_OFF if self.printing else self.PRINT_ON
+            i = data.find(mark)
+            if i < 0:
+                keep = next((k for k in range(len(mark) - 1, 0, -1)
+                             if data.endswith(mark[:k])), 0)
+                self._held = data[len(data) - keep:] if keep else b""
+                self._route(data[:len(data) - keep])
+                return
+            self._route(data[:i])
+            data = data[i + len(mark):]
+            if self.printing:
+                job, self._print_job = bytes(self._print_job), bytearray()
+                self.printing = False
+                if job:
+                    self.on_print_data(job)
+            else:
+                self.printing = self.host_print
+
+    def _route(self, data: bytes) -> None:
+        if self.printing:
+            self._print_job += data
+        elif data:
+            super().feed(data)
+
     def feed_text(self, text: str) -> None:
         for ch in text:
             self._feed_char(ch)
