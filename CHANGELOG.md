@@ -3,6 +3,28 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.10.0
+
+- IBM i: TN5250 with the IBM 3179-2, 5251-11 and 3477-FC display stations,
+  a 5250 keyboard (Field Exit, Field+/−, Attention, SysReq, Roll Up/Down)
+  and a fixed device name per session.
+- Idle timeout: sessions disconnect after 15 minutes without typing or
+  clicking and blank the screen and scrollback. Adjust or turn it off per
+  session; the policy's `max_idle_timeout` caps it. **This is on by
+  default.**
+- Keep-alives every 60 seconds (SSH, Telnet NOP and TCP), and an optional
+  automatic reconnect after a dropped connection (not after logging off).
+  Press Enter in a session that has ended to connect again.
+- Session logs: optional text logs with hidden fields left blank and no
+  keystrokes, rotating at 1 MB, 2 older files kept, and all logs held
+  under 10 MB. Policy: `session_logging`, `log_dir`, `log_total_mb`.
+- Audit log: with `audit_log = true` each connection, disconnection and
+  failure goes to syslog/journald.
+- SSH host keys in `/etc/ssh/ssh_known_hosts` and in shared setup folders
+  are trusted without asking; `ssh_known_hosts_only = true` refuses any
+  other host.
+- An administrator guide (docs/ADMIN.md) and a user guide (docs/USER.md).
+
 ## 0.9.0
 
 - Site policy: an administrator's `/etc/cherminal/policy.toml` enforces

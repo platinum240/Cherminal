@@ -1,0 +1,119 @@
+# Cherminal user guide
+
+Cherminal connects you to host systems: Linux and Unix servers, IBM
+mainframes, IBM i, and serial devices. This guide covers everyday use. Your
+administrator may have set some things up for you, so some menus or
+settings below can be missing or greyed out; that is on purpose.
+
+## Connecting
+
+- **Open a saved session:** File › Sessions… (Ctrl+Shift+O), pick one and
+  press **Connect**, or double-click it. Sessions your administrator shares
+  are marked `[shared]`.
+- **Connect once without saving:** File › Quick connect… (Ctrl+Shift+N).
+- **More than one session:** each opens in its own tab.
+- **Signing in:** Cherminal never stores passwords. It asks when the host
+  needs one, or the host shows its own sign-on screen.
+
+The first time you connect to an SSH host you may be asked to trust its
+key. If your administrator gave you the key's fingerprint, check it matches
+before you answer Yes.
+
+## When a session ends
+
+- **Press Enter** in a session that has ended to connect again. Session ›
+  Reconnect does the same.
+- **Idle timeout:** if you don't type or click in a session for a while
+  (15 minutes unless your session says otherwise), Cherminal disconnects it
+  and blanks the screen so nobody can read it. A minute before, the status
+  bar at the bottom warns you; press any key to stay connected.
+- **Dropped connections:** if the session is set to reconnect
+  automatically, Cherminal tries again by itself when the network drops,
+  and shows "Reconnecting in ... seconds" in the window. You may need to sign
+  in again.
+
+## Copy, paste and search
+
+- **Copy:** select text with the mouse, then right-click › Copy (or Edit ›
+  Copy). Selected text is also ready to paste with the middle mouse button.
+- **Paste:** right-click › Paste, Edit › Paste, or the middle mouse button.
+- **Search:** right-click › Search…, or Ctrl+Shift+F. A search bar opens at
+  the bottom. Type what you're looking for; Enter (or the up arrow) finds
+  the one above, Shift+Enter (or the down arrow) the one below, and it
+  wraps around. The gear button offers **Match case**, **Match whole word**
+  and **Regular expression**. Esc closes it. Searching covers the screen
+  and everything that scrolled off it.
+- **Scrolling back:** use the mouse wheel to look at what scrolled off the
+  top. Typing returns to the bottom.
+
+Password fields are never copied, searched or printed.
+
+## Colours and text size
+
+- **Colours for this session only:** right-click › Colours for this
+  session… (or View › Colours for this session…). Pick a scheme such as
+  high contrast or yellow on black, set text and background colours, or
+  raise **Minimum contrast**. This changes only the window in front of you
+  and stays until you close it, even if you reconnect; the saved session
+  and other users are not affected. **Use the session's colours** puts it
+  back.
+- **Text size:** by default the text grows and shrinks with the window.
+  View › Font… picks a different font.
+
+## Printing
+
+- **Print the screen:** the Print key, Ctrl+Shift+P, Session › Print
+  screen…, or right-click › Print screen…. If your session has a printer
+  set, it prints there straight away; otherwise choose a printer.
+- **Host printing:** some host programs print directly to your local
+  printer; that happens by itself.
+
+## Uploading files (SSH only)
+
+If your session allows it, drag files from your desktop or file manager
+onto the terminal window, or use right-click › Upload files…. Cherminal
+asks before sending, and asks again before replacing a file that is
+already on the host. Files go to your home folder on the host unless the
+session names another folder. Folders can't be uploaded.
+
+## IBM mainframe (3270) and IBM i (5250) sessions
+
+These screens work like the terminals they copy: you type into the fields
+on the screen, and nothing goes to the host until you press Enter or a
+function key.
+
+| You want to | Press |
+|---|---|
+| Send the screen | Enter |
+| PF1-PF12 / F1-F12 | F1-F12 |
+| PF13-PF24 / F13-F24 | Shift+F1-F12 |
+| Move to the next or previous field | Tab / Shift+Tab |
+| Unlock the keyboard after an error | Escape (Reset) |
+| Page backward / forward | PageUp / PageDown |
+| Erase to the end of the field | Ctrl+End |
+| Clear (3270) | Pause |
+| PA1 / PA2 / PA3 (3270) | Alt+F1 / Alt+F2 / Alt+F3 |
+| Field Exit (5250) | Keypad Enter |
+| Attention (5250) | Shift+Escape |
+| System Request (5250) | Alt+Print |
+
+The status bar shows the terminal's state: `X System` or `X SYSTEM` while
+the host is busy (wait), `X Protected` or `X II` when you typed somewhere
+you can't (press Escape), and the cursor position.
+
+Your session may have its own key layout; File › Edit this session… ›
+Keyboard & macros › **Keyboard map…** shows it on a picture of the
+keyboard.
+
+## Session logs
+
+If your session keeps a log (its **Logging** tab), the text you saw is
+saved in `~/.local/state/cherminal/logs/` unless your administrator chose
+another folder. Passwords and what you type are never written to it.
+Old log files are deleted by themselves to save space.
+
+## Getting help
+
+Help › About Cherminal shows the version. When you report a problem, say
+which session, what you pressed, and the message shown in the window or the
+status bar.

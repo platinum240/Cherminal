@@ -55,3 +55,8 @@
 # failed connection: user, session, host, what happened and how long it
 # lasted. Never anything typed or shown in a session.
 # audit_log = true
+
+# SSH only to hosts whose keys are in /etc/ssh/ssh_known_hosts, a
+# known_hosts file in a shared setup folder, or the user's ~/.ssh/known_hosts.
+# Users are never asked to trust a new host.
+# ssh_known_hosts_only = true

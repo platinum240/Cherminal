@@ -17,6 +17,10 @@ and no longer runs on current distributions. Cherminal is a clean-room
 replacement; see [docs/SPEC.md](docs/SPEC.md) for the feature scope, the
 sources it was derived from, and the architecture.
 
+Guides: [administrator guide](docs/ADMIN.md) (installing, shared setup,
+site policy, certificates, host keys, logging, eLux rollout) and
+[user guide](docs/USER.md).
+
 ## Features
 
 - **Emulations:** VT100, VT220, VT320, VT420, SCO ANSI, AT386, Linux console,
@@ -436,6 +440,7 @@ session_logging = "allowed"       # "allowed", "never" or "always"
 log_dir = "/var/log/cherminal/%u" # where session logs go (%u = user name)
 log_total_mb = 10                 # all session logs together stay under this
 audit_log = true                  # connection log to syslog/journald
+ssh_known_hosts_only = true       # SSH only to hosts whose keys you provided
 ```
 
 With `audit_log = true` each connection, disconnection and failed
