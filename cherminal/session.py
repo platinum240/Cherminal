@@ -30,6 +30,8 @@ class Session:
                                           encoding=self.encoding,
                                           answerback=profile.answerback)
         self.emulation.host_print = profile.host_print
+        if self.emulation.printer:
+            self.emulation.printer_name = profile.printer
         self.keymap: Keymap = self.store.build_keymap(profile)
         self.transport = transport
         self.connected = False
@@ -58,6 +60,8 @@ class Session:
             self.started = time.monotonic()
             audit("connected", self.profile)
             self._start_log()
+            if self.emulation.printer:
+                self.notice("connected")        # the printer's status view
             on_update()
 
         def data(chunk: bytes):
@@ -80,7 +84,13 @@ class Session:
             on_closed(reason)
 
         t.on_open, t.on_data, t.on_close = opened, data, closed
+        if hasattr(t, "on_tn3270e") and hasattr(self.emulation, "set_tn3270e"):
+            t.on_tn3270e = self._tn3270e
         t.open(self.screen.cols, self.screen.rows)
+
+    def _tn3270e(self, device_type: str, lu_name: str, functions) -> None:
+        with self.lock:
+            self.emulation.set_tn3270e(device_type, lu_name, functions)
 
     def disconnect(self, reason: str = "closed by the user") -> None:
         if self.transport:

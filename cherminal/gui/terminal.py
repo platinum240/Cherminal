@@ -35,6 +35,7 @@ class _Bridge(QObject):
     upload_progress = pyqtSignal(str, int, int)
     upload_done = pyqtSignal(str, object)       # error ("" = ok), remote paths
     print_data = pyqtSignal(bytes)              # a host passthrough print job
+    print_job = pyqtSignal(str)                 # a 3287 printer session's decoded job
 
 
 class TerminalWidget(QWidget):
@@ -87,6 +88,14 @@ class TerminalWidget(QWidget):
         self.bridge.upload_done.connect(self._on_upload_done)
         self.bridge.print_data.connect(self._on_print_data)
         session.emulation.on_print_data = self.bridge.print_data.emit
+        if session.emulation.printer:
+            # 3287 printer session: jobs print as they end, without asking; a
+            # timer ends a job the host leaves open (see IBM3287.tick).
+            self.bridge.print_job.connect(self._on_print_job, Qt.ConnectionType.QueuedConnection)
+            session.emulation.on_job = self.bridge.print_job.emit
+            self._eoj = QTimer(self, interval=1000)
+            self._eoj.timeout.connect(self._printer_tick)
+            self._eoj.start()
         # Coalesce bursts of host output into at most ~60 repaints a second.
         self._repaint = QTimer(self, singleShot=True, interval=16)
         self._repaint.timeout.connect(self.update)
@@ -472,6 +481,21 @@ class TerminalWidget(QWidget):
         if print_screen(self, self, allow_file=allow_file):
             self.message.emit("Screen sent to the printer")
         self.setFocus()
+
+    def _printer_tick(self) -> None:
+        with self.session.lock:
+            self.session.emulation.tick()
+
+    def _on_print_job(self, text: str) -> None:
+        from .printing import print_text
+        emu = self.session.emulation
+        title = f"{self.session.profile.name} {emu.lu_name}".strip()
+        result = print_text(text, self.session.profile.printer, title)
+        with self.session.lock:
+            emu.print_result = result
+            emu._render()
+        self.message.emit(result)
+        self._on_update()
 
     def _on_print_data(self, data: bytes) -> None:
         from .printing import print_raw

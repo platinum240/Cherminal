@@ -32,7 +32,11 @@ def _make(profile, ask_password, confirm_host_key, ask_login) -> Transport:
                                tn3270=emu.block_mode, tls=profile.tls,
                                device_name=profile.device_name if emu.family == "ibm5250" else "",
                                tls_verify=profile.tls_verify,
-                               ca_file=policy.current().tls_ca_file)
+                               ca_file=policy.current().tls_ca_file,
+                               # TN3270E for printers, and for displays given an LU name
+                               tn3270e=getattr(emu, "tn3270", False)
+                               and (emu.printer or bool(profile.lu_name)),
+                               lu_name=profile.lu_name, printer=emu.printer)
     if profile.transport == "ssh":
         from .ssh import SSHTransport
         return SSHTransport(profile.host, profile.effective_port, profile.username,

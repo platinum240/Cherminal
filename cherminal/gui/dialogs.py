@@ -431,6 +431,10 @@ class SessionEditor(QDialog):
         self.device_name.setToolTip("IBM i workstation device name (up to 10 characters: "
                                     "A-Z, 0-9, @ # $ _). Leave empty for a QPADEVnnnn "
                                     "device chosen by the host.")
+        self.lu_name = QLineEdit(maxLength=8, placeholderText="any (the host chooses)")
+        self.lu_name.setToolTip("IBM 3270: connect to this LU (TN3270E). Needed for a "
+                                "particular printer or terminal LU; up to 8 letters, "
+                                "digits, @, # or $.")
         self.username = QLineEdit()
         self.ask_login = QCheckBox("Ask for user name and password when connecting")
         self.ask_login.setToolTip("For users whose login on this host isn't their "
@@ -460,6 +464,7 @@ class SessionEditor(QDialog):
                 ("Host", self.host, {"ssh", "telnet"}), ("Port", self.port, {"ssh", "telnet"}),
                 ("Security", self.tls, {"telnet"}), ("", self.tls_verify, {"telnet"}),
                 ("Device name", self.device_name, {"telnet"}),
+                ("LU name", self.lu_name, {"telnet"}),
                 ("User", self.username, {"ssh"}), ("Login", self.ask_login, {"ssh"}),
                 ("Private key", ident_row, {"ssh"}),
                 ("Command", self.command, {"local"}),
@@ -690,6 +695,10 @@ class SessionEditor(QDialog):
         for widget, kinds in self._rows.values():
             self._form.setRowVisible(widget, kind in kinds)
         self._form.setRowVisible(self.device_name, kind == "telnet" and self._is_5250())
+        if hasattr(self, "emulation"):          # LU names: IBM 3270 family only
+            emu = emulation.EMULATIONS.get(self.emulation.currentText())
+            self._form.setRowVisible(self.lu_name, kind == "telnet"
+                                     and getattr(emu, "tn3270", False))
         if hasattr(self, "transfer_tab"):
             ssh = kind == "ssh"
             self.transfer_box.setVisible(ssh)
@@ -714,6 +723,7 @@ class SessionEditor(QDialog):
         self.tls.setChecked(p.tls)
         self.tls_verify.setChecked(p.tls_verify)
         self.device_name.setText(p.device_name)
+        self.lu_name.setText(p.lu_name)
         rules = policy.current()
         locked = "Required by this computer's policy"
         if rules.require_tls:
@@ -783,6 +793,7 @@ class SessionEditor(QDialog):
             host=self.host.text().strip(), port=self.port.value(),
             tls=self.tls.isChecked(), tls_verify=self.tls_verify.isChecked(),
             device_name=self.device_name.text().strip().upper() if self._is_5250() else "",
+            lu_name=self.lu_name.text(),
             username=self.username.text().strip(), ask_login=self.ask_login.isChecked(),
             file_transfer=self.file_transfer.isChecked(),
             upload_dir=self.upload_dir.text().strip(),

@@ -13,13 +13,14 @@ record; the Telnet layer adds the IAC EOR.
 IND$FILE file transfers (DFT mode) are in :mod:`.indfile`.
 
 References: IBM GA23-0059 "3270 Data Stream Programmer's Reference",
-RFC 1576 (TN3270), RFC 2355 (TN3270E, not negotiated here).
+RFC 1576 (TN3270), RFC 2355 (TN3270E: used when the session names an LU,
+with the record headers in :mod:`.tn3270e`).
 """
 
 from __future__ import annotations
 
 from ..screen import DEFAULT_ATTR, Attr, Cell
-from . import indfile
+from . import indfile, tn3270e
 from .base import Emulation
 
 # The largest 3270 data stream record kept. A full 27x132 screen with every
@@ -98,11 +99,16 @@ class IBM3270(Emulation):
     family = "ibm3270"
     block_mode = True       # keys are edited locally and sent by attention keys
     fixed_size = True       # the host sets the grid; the window scales to it
+    tn3270 = True           # the IBM 3270 family: TN3270(E), LU names
     alternate = (80, 24)    # cols, rows for Erase/Write Alternate
 
     def __init__(self, screen, reply=None, encoding: str = "cp037", answerback: str = ""):
         super().__init__(screen, reply, encoding=encoding, answerback=answerback)
         screen.scrollback_limit = 0
+        # Every reply goes through the TN3270E framing (a no-op until agreed).
+        self.e = tn3270e.Framing(self.reply)
+        self.reply = self._reply_record
+        self.lu_name = ""
         self._rec = bytearray()
         self._rec_dropped = False
         self._iac = False
@@ -146,6 +152,8 @@ class IBM3270(Emulation):
             parts.append("Insert")
         if self.message:
             parts.append(self.message)
+        if self.lu_name:
+            parts.append(f"LU {self.lu_name}")
         r, c = divmod(self.cursor, self.cols)
         parts.append(f"{r + 1:03d}/{c + 1:03d}")
         return "  ".join(parts)
@@ -201,7 +209,7 @@ class IBM3270(Emulation):
                 if b == EOR:
                     rec, self._rec = bytes(self._rec), bytearray()
                     if rec and not self._rec_dropped:
-                        self.process(rec)
+                        self._host_record(rec)
                     self._rec_dropped = False
                     continue
                 self._keep(b)                # IAC IAC -> one 0xFF
@@ -219,6 +227,24 @@ class IBM3270(Emulation):
 
     def feed_text(self, text: str) -> None:
         pass  # 3270 data is binary; see feed()
+
+    def set_tn3270e(self, device_type: str, lu_name: str, functions: tuple[int, ...]) -> None:
+        """TN3270E was agreed: records now carry headers. Called by the session."""
+        self.e.start(functions)
+        self.lu_name = lu_name
+        self.on_status()
+
+    def _host_record(self, rec: bytes) -> None:
+        if not self.e.active:
+            self.process(rec)
+            return
+        split = self.e.split(rec)
+        if split and split[0] == tn3270e.DT_3270_DATA and split[1]:
+            self.process(split[1])
+        self.e.ack()                    # nothing else to say (SSCP-LU, NVT: ignored)
+
+    def _reply_record(self, data: bytes) -> None:
+        self.e.send(self.e.wrap(data) if self.e.active else data)
 
     def process(self, rec: bytes) -> None:
         """Run one host record (a command and its data)."""

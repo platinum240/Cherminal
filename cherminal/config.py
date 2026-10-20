@@ -54,6 +54,7 @@ class SessionProfile:
     tls: bool = False                 # telnet: TLS (e.g. TN3270 on port 992)
     tls_verify: bool = True           # check the host's certificate
     device_name: str = ""             # TN5250: workstation device name (NEW-ENVIRON DEVNAME)
+    lu_name: str = ""                 # 3270: TN3270E CONNECT to this LU (printer or display)
     username: str = ""
     identity_file: str = ""           # SSH private key
     ask_login: bool = False           # SSH: ask for user name and password on connect
@@ -107,6 +108,9 @@ class SessionProfile:
             raise ValueError("backspace must be 'del' or 'bs'")
         if self.enter_sends not in ("cr", "crlf", "lf"):
             raise ValueError("enter_sends must be cr, crlf or lf")
+        self.lu_name = self.lu_name.strip().upper()
+        if self.lu_name and not re.fullmatch(r"[A-Z0-9@#$]{1,8}", self.lu_name):
+            raise ValueError("an LU name is 1 to 8 letters, digits, @, # or $")
         if self.resize_mode not in ("scale", "grow"):
             raise ValueError("resize_mode must be scale or grow")
         for key in ("fg_color", "bg_color", "cursor_color"):
