@@ -14,6 +14,14 @@ PasswordPrompt = Callable[[str], "str | None"]
 LoginPrompt = Callable[[str, str, str], "tuple[str, str] | None"]
 # confirm_host_key(host, key_type, sha256_fingerprint, changed) -> accept?
 HostKeyPrompt = Callable[[str, str, str, bool], bool]
+# progress(file_name, bytes_done, bytes_total) -> False to cancel
+UploadProgress = Callable[[str, int, int], bool]
+# replace(remote_path) -> overwrite an existing file?
+ReplacePrompt = Callable[[str], bool]
+
+
+class UploadCancelled(Exception):
+    pass
 
 
 def fingerprint(key) -> str:
@@ -121,6 +129,70 @@ class SSHTransport(Transport):
         super().resize(cols, rows)
         if self.chan:
             self.chan.resize_pty(width=cols, height=rows)
+
+    def upload(self, paths: list[str], remote_dir: str = "",
+               progress: UploadProgress | None = None,
+               replace: ReplacePrompt | None = None) -> list[str]:
+        """Copy local files to the host over SFTP on this connection.
+
+        Uses the already authenticated, host-key-checked SSH connection, so
+        nothing is sent anywhere the session isn't already connected to. Only
+        the file's own name is used on the host (no local folders), and an
+        existing file is replaced only if ``replace`` says so. Returns the
+        remote paths written.
+        """
+        import posixpath
+        import stat
+        if not self.client or not self.client.get_transport() \
+                or not self.client.get_transport().is_active():
+            raise OSError("not connected")
+        progress = progress or (lambda *a: True)
+        replace = replace or (lambda path: False)
+        written = []
+        with self.client.open_sftp() as sftp:
+            home = sftp.normalize(".")
+            target = remote_dir.strip() or home
+            if target == "~" or target.startswith("~/"):
+                target = posixpath.join(home, target[2:])
+            elif not target.startswith("/"):
+                target = posixpath.join(home, target)
+            if not stat.S_ISDIR(sftp.stat(target).st_mode):
+                raise OSError(f"{target} is not a folder on {self.host}")
+            for path in paths:
+                name = os.path.basename(path)
+                if not os.path.isfile(path):
+                    raise OSError(f"{name} is not a file")
+                remote = posixpath.join(target, name)
+                exists = True
+                try:
+                    sftp.stat(remote)
+                except FileNotFoundError:
+                    exists = False
+                if exists and not replace(remote):
+                    continue
+
+                def cb(done, total, name=name):
+                    if not progress(name, done, total):
+                        raise UploadCancelled()
+                # Write beside the target and rename at the end, so a cancelled
+                # or broken upload never leaves half a file in its place.
+                part = remote + ".part"
+                try:
+                    sftp.put(path, part, callback=cb)
+                except BaseException:
+                    try:
+                        sftp.remove(part)
+                    except OSError:
+                        pass
+                    raise
+                try:
+                    sftp.posix_rename(part, remote)
+                except OSError:
+                    if exists:
+                        sftp.remove(remote)
+                    sftp.rename(part, remote)
+                written.append(remote)
+        return written
 
     def _close(self) -> None:
         if self.client:
