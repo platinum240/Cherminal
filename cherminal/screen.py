@@ -62,6 +62,8 @@ class Screen:
         self.scrollback_limit = scrollback
         self.scrollback: list[list[Cell]] = []
         self.title = ""
+        # Called with each line as it scrolls off the top (for session logs).
+        self.on_line_done = None
         self.reset()
 
     # ----------------------------------------------------------------- state
@@ -244,7 +246,14 @@ class Screen:
 
     # ------------------------------------------------------------ scrolling
 
+    def wipe(self) -> None:
+        """Blank the screen and forget the scrollback, e.g. after an idle timeout."""
+        self.scrollback.clear()
+        self.reset()
+
     def _push_scrollback(self, line: list[Cell]) -> None:
+        if self.on_line_done is not None:
+            self.on_line_done(line)
         if self.scrollback_limit <= 0:
             return
         self.scrollback.append(line)

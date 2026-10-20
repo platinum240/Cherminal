@@ -19,6 +19,11 @@ from ..session import Session
 from .colors import ensure_contrast, resolve
 from .keys import key_name
 
+IDLE_CHECK_MS = 5000            # how often the idle timeout is checked
+IDLE_WARNING = 60               # seconds of warning before an idle disconnect
+RETRY_DELAYS = (2, 5, 10, 20, 30, 60)   # seconds between reconnect attempts
+MAX_RETRIES = 10
+
 
 class _Bridge(QObject):
     """Carries transport callbacks from the reader thread to the UI thread."""
@@ -79,6 +84,15 @@ class TerminalWidget(QWidget):
         self._repaint.timeout.connect(self.update)
         session.on_action = self.do_action
         session.emulation.on_bell = QApplication.beep
+        # Connection upkeep: the idle timeout and reconnecting after a drop.
+        self.ended = False              # the connection is over; Enter reconnects
+        self.retries = 0
+        self._idle_warned = False
+        self._idle_timer = QTimer(self, interval=IDLE_CHECK_MS)
+        self._idle_timer.timeout.connect(self.check_idle)
+        self._idle_timer.start()
+        self._retry_timer = QTimer(self, singleShot=True)
+        self._retry_timer.timeout.connect(self.reconnect_now)
 
     # ------------------------------------------------------------ geometry
 
@@ -184,6 +198,13 @@ class TerminalWidget(QWidget):
             box["result"] = answer == QMessageBox.StandardButton.Yes
 
     def _on_update(self) -> None:
+        if self.session.connected and self.retries:
+            self.retries = 0
+            self.message.emit("Reconnected")
+        log_error = self.session.log_error or (self.session.log and self.session.log.error)
+        if log_error and log_error != getattr(self, "_shown_log_error", ""):
+            self._shown_log_error = log_error
+            self.message.emit(log_error.capitalize())
         s = self.session.screen
         if (s.cols, s.rows) != getattr(self, "_last_grid", (s.cols, s.rows)):
             self._apply_resize()            # the host changed the screen size
@@ -197,9 +218,89 @@ class TerminalWidget(QWidget):
         self.status_changed.emit(self.status_text())
 
     def _on_closed(self, reason: str) -> None:
+        self.ended = True
+        left = self.session.idle_left()
+        if left is not None and left <= 0:
+            self.idle_disconnect()           # went idle while the link was down
+            return
         self.session.notice(reason)
-        self.status_changed.emit(f"Disconnected: {reason}")
+        if (self.session.dropped or self.retries) and self.session.may_reconnect \
+                and self.retries < MAX_RETRIES:
+            delay = RETRY_DELAYS[min(self.retries, len(RETRY_DELAYS) - 1)]
+            self.retries += 1
+            self.session.notice(f"Reconnecting in {delay} seconds (try {self.retries} of "
+                                f"{MAX_RETRIES}). Press Enter to reconnect now.")
+            self.status_changed.emit(f"Connection lost: {reason} · reconnecting in {delay} s")
+            self._retry_timer.start(delay * 1000)
+        else:
+            if self.retries:
+                self.session.notice(f"Could not reconnect after {self.retries} tries.")
+                self.retries = 0
+            self.session.notice("Press Enter to reconnect.")
+            self.status_changed.emit(f"Disconnected: {reason}")
         self.update()
+
+    def reconnect_now(self) -> None:
+        """Connect again in this tab, keeping the screen and the session's log."""
+        self._retry_timer.stop()
+        self.ended = False
+        self.session.forget_transport()
+        if self.session.emulation.block_mode:
+            with self.session.lock:
+                self.session.emulation.reset()   # the host paints a fresh screen
+        self.connect_session()
+
+    def check_idle(self) -> None:
+        if not self.session.connected:
+            return
+        left = self.session.idle_left()
+        if left is None:
+            return
+        if left <= 0:
+            self.idle_disconnect()
+        elif left <= IDLE_WARNING:
+            if not self._idle_warned:
+                self._idle_warned = True
+                self.message.emit(f"No input for a while: {self.session.profile.name} "
+                                  f"disconnects in {int(left)} seconds unless a key is pressed")
+        else:
+            self._idle_warned = False
+
+    def idle_disconnect(self) -> None:
+        """Close the connection and blank the screen and scrollback, so an
+        unattended terminal shows nothing."""
+        minutes = self.session.idle_limit
+        self._retry_timer.stop()
+        self.retries = 0
+        self.session.disconnect(reason=f"idle for {minutes} minutes")
+        with self.session.lock:
+            self.session.emulation.reset()
+            self.session.screen.wipe()
+        self.scroll_offset = 0
+        self.clear_selection()
+        self.ended = True
+        self.session.notice(f"Disconnected after {minutes} minutes without input. "
+                            f"Press Enter to reconnect.")
+        self.status_changed.emit(f"Disconnected: no input for {minutes} minutes")
+        self.message.emit(f"{self.session.profile.name} was disconnected after {minutes} "
+                          f"minutes without input")
+        self.update()
+
+    def user_disconnect(self) -> None:
+        self._retry_timer.stop()
+        self.retries = 0
+        if self.session.connected:
+            self.session.disconnect()
+            self.ended = True
+            self.session.notice("Disconnected. Press Enter to reconnect.")
+            self.status_changed.emit("Disconnected")
+            self.update()
+
+    def shutdown(self) -> None:
+        """The tab is closing: stop the timers and the connection."""
+        self._idle_timer.stop()
+        self._retry_timer.stop()
+        self.session.disconnect()
 
     def status_text(self) -> str:
         p = self.session.profile
@@ -217,6 +318,10 @@ class TerminalWidget(QWidget):
         return False   # keep Tab for the host
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
+        if self.ended and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self.session.touch()
+            self.reconnect_now()
+            return
         named = key_name(event)
         if named is None:
             return
@@ -486,6 +591,7 @@ class TerminalWidget(QWidget):
         return history - self.scroll_offset + row, col
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
+        self.session.touch()
         if event.button() == Qt.MouseButton.LeftButton:
             self.match = None
             self.sel_start = self.sel_end = self._cell_at(event.position())

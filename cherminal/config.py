@@ -87,6 +87,12 @@ class SessionProfile:
                                       # grow: keep the font, add rows/columns
     printer: str = ""                 # "" = choose in the print dialog each time
     host_print: bool = True           # VT: host may print via ESC [ 5 i (passthrough)
+    keepalive: int = 60               # seconds between keep-alives; 0 = off
+    auto_reconnect: bool = False      # reconnect by itself if the connection drops
+    idle_timeout: int = 15            # minutes without input before disconnecting; 0 = never
+    log_session: bool = False         # capture the session's text to a log file
+    log_file_kb: int = 1024           # start a new log file at this size
+    log_keep: int = 2                 # older log files kept; older ones are deleted
     keys: dict[str, str] = field(default_factory=dict)
     macros: dict[str, str] = field(default_factory=dict)
 
@@ -110,6 +116,11 @@ class SessionProfile:
             _check_hex(value)
         if not (self.min_contrast == 0 or 1 <= self.min_contrast <= 21):
             raise ValueError("min_contrast must be 0 (scheme default) or between 1 and 21")
+        for key in ("keepalive", "idle_timeout", "log_keep"):
+            if getattr(self, key) < 0:
+                raise ValueError(f"{key} cannot be negative")
+        if self.log_file_kb < 16:
+            raise ValueError("log_file_kb must be at least 16")
         if emulation.EMULATIONS[self.emulation].block_mode and self.transport != "telnet":
             raise ValueError(f"{self.emulation} needs a telnet (TN3270) connection")
 

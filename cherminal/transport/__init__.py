@@ -10,6 +10,12 @@ from .base import Transport
 
 def from_profile(profile: SessionProfile, ask_password=None, confirm_host_key=None,
                  ask_login=None) -> Transport:
+    transport = _make(profile, ask_password, confirm_host_key, ask_login)
+    transport.keepalive = profile.keepalive
+    return transport
+
+
+def _make(profile, ask_password, confirm_host_key, ask_login) -> Transport:
     emu = EMULATIONS[profile.emulation]
     if profile.transport == "local":
         from .local import LocalTransport

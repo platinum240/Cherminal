@@ -87,7 +87,7 @@ class MainWindow(QMainWindow):
                      lambda: self.fkey_bar.setVisible(not self.fkey_bar.isVisible()))
         s = mb.addMenu("&Session")
         self._action(s, "&Reconnect", self.reconnect)
-        self._action(s, "&Disconnect", lambda: self._term() and self._term().session.disconnect())
+        self._action(s, "&Disconnect", lambda: self._term() and self._term().user_disconnect())
         self._action(s, "Send &Break", lambda: self._run("break"))
         self._action(s, "&Print screen…", lambda: self._term() and self._term().print_screen(),
                      "Ctrl+Shift+P")
@@ -168,7 +168,7 @@ class MainWindow(QMainWindow):
         term = self.tabs.widget(idx)
         if term is None:
             return
-        term.session.disconnect()
+        term.shutdown()
         self.tabs.removeTab(idx)
         term.deleteLater()
 
@@ -235,7 +235,7 @@ class MainWindow(QMainWindow):
 
     def disconnect_all(self) -> None:
         for i in range(self.tabs.count()):
-            self.tabs.widget(i).session.disconnect()
+            self.tabs.widget(i).shutdown()
 
     def closeEvent(self, event) -> None:
         self.disconnect_all()

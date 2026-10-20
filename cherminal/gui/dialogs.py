@@ -386,6 +386,8 @@ class SessionEditor(QDialog):
         self.transfer_tab = self._transfer_tab()
         tabs.addTab(self.transfer_tab, "File transfer")
         tabs.addTab(self._printing_tab(), "Printing")
+        tabs.addTab(self._upkeep_tab(), "Idle && reconnect")
+        tabs.addTab(self._logging_tab(), "Logging")
         self.tabs = tabs
         buttons = QDialogButtonBox()
         if connect_only:
@@ -580,6 +582,76 @@ class SessionEditor(QDialog):
         lay.addStretch()
         return w
 
+    def _upkeep_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        f = QFormLayout()
+        rules = policy.current()
+        self.idle_timeout = QSpinBox(minimum=0, maximum=24 * 60, suffix=" minutes",
+                                     specialValueText="Never")
+        self.idle_timeout.setToolTip("Disconnect when nobody has typed or clicked in the "
+                                     "session for this long. The screen is blanked and "
+                                     "Enter connects again.")
+        if rules.max_idle_timeout:
+            self.idle_timeout.setRange(1, rules.max_idle_timeout)
+            self.idle_timeout.setToolTip(f"This computer's policy allows at most "
+                                         f"{rules.max_idle_timeout} minutes.")
+        self.keepalive = QSpinBox(minimum=0, maximum=3600, suffix=" seconds",
+                                  specialValueText="Off")
+        self.keepalive.setToolTip("Send a keep-alive this often when the session is quiet, "
+                                  "so firewalls don't drop it and a dead connection is "
+                                  "noticed.")
+        self.auto_reconnect = QCheckBox("Reconnect automatically if the connection drops")
+        if not rules.auto_reconnect:
+            self.auto_reconnect.setEnabled(False)
+            self.auto_reconnect.setToolTip("Turned off by this computer's policy")
+        f.addRow("Disconnect when idle for", self.idle_timeout)
+        f.addRow("Keep-alive every", self.keepalive)
+        f.addRow(self.auto_reconnect)
+        lay.addLayout(f)
+        note = QLabel("Typing and clicking count as activity; output from the host does not. "
+                      "A minute before an idle disconnect the status bar warns. Reconnecting "
+                      "happens only when the connection breaks, not when you log off or the "
+                      "idle timeout closes it, and it asks for a password again if the "
+                      "session needs one.")
+        note.setWordWrap(True)
+        lay.addWidget(note)
+        lay.addStretch()
+        return w
+
+    def _logging_tab(self) -> QWidget:
+        from ..sessionlog import log_dir
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        f = QFormLayout()
+        rules = policy.current()
+        self.log_session = QCheckBox("Keep a log of this session's text")
+        self.log_file_kb = QSpinBox(minimum=16, maximum=1024 * 1024, singleStep=256,
+                                    suffix=" KB")
+        self.log_keep = QSpinBox(minimum=0, maximum=99, suffix=" older files")
+        self.log_session.toggled.connect(self._log_toggled)
+        if rules.session_logging != "allowed":
+            self.log_session.setEnabled(False)
+            self.log_session.setToolTip("Set by this computer's policy")
+        f.addRow(self.log_session)
+        f.addRow("Start a new file at", self.log_file_kb)
+        f.addRow("Keep", self.log_keep)
+        lay.addLayout(f)
+        note = QLabel(
+            f"Logs go to {log_dir()}. The log has what the screen showed: lines as they "
+            f"scroll up and, on IBM screens, each screen as it is sent. Hidden fields such "
+            f"as passwords are left blank and keystrokes are never logged. Old files are "
+            f"deleted by themselves, and all session logs together are kept under "
+            f"{rules.log_total_mb} MB.")
+        note.setWordWrap(True)
+        lay.addWidget(note)
+        lay.addStretch()
+        return w
+
+    def _log_toggled(self, on: bool) -> None:
+        self.log_file_kb.setEnabled(on)
+        self.log_keep.setEnabled(on)
+
     def _open_keyboard_map(self) -> None:
         from .keyboard import KeyboardEditor
         try:
@@ -661,6 +733,14 @@ class SessionEditor(QDialog):
             idx = self.printer.count() - 1
         self.printer.setCurrentIndex(max(0, idx))
         self.host_print.setChecked(p.host_print)
+        self._loaded = p           # settings the policy decides are saved unchanged
+        self.idle_timeout.setValue(rules.idle_timeout(p.idle_timeout))
+        self.keepalive.setValue(p.keepalive)
+        self.auto_reconnect.setChecked(p.auto_reconnect and rules.auto_reconnect)
+        self.log_session.setChecked(rules.logging(p.log_session))
+        self.log_file_kb.setValue(p.log_file_kb)
+        self.log_keep.setValue(p.log_keep)
+        self._log_toggled(self.log_session.isChecked())
         self.keys.set_items(p.keys)
         self.macros.set_items(p.macros)
 
@@ -692,7 +772,13 @@ class SessionEditor(QDialog):
             answerback=self.answerback.text(), local_echo=self.local_echo.isChecked(),
             enter_sends=self.enter_sends.currentText(),
             resize_mode=self.resize_mode.currentData(), printer=self._printer_name(),
-            host_print=self.host_print.isChecked(), keys=keys, macros=self.macros.items())
+            host_print=self.host_print.isChecked(), idle_timeout=self.idle_timeout.value(),
+            keepalive=self.keepalive.value(),
+            auto_reconnect=(self.auto_reconnect.isChecked() if self.auto_reconnect.isEnabled()
+                            else self._loaded.auto_reconnect),
+            log_session=(self.log_session.isChecked() if self.log_session.isEnabled()
+                         else self._loaded.log_session), log_file_kb=self.log_file_kb.value(),
+            log_keep=self.log_keep.value(), keys=keys, macros=self.macros.items())
 
     def _printer_name(self) -> str:
         text = self.printer.currentText().strip()

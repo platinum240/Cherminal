@@ -6,9 +6,11 @@ GUI-independent so the key and data paths can be tested without Qt.
 from __future__ import annotations
 
 import threading
+import time
 from typing import Callable
 
 from . import emulation, policy
+from .sessionlog import SessionLog, audit, duration, line_text, open_log
 from .config import ProfileStore, SessionProfile
 from .keymap import Binding, Keymap
 from .screen import Screen
@@ -33,6 +35,11 @@ class Session:
         # Emulation state is touched from the reader thread and the UI thread.
         self.lock = threading.RLock()
         self.on_action: Callable[[str], None] = lambda name: None
+        self.last_input = time.monotonic()
+        self.dropped = False            # the last connection broke rather than ended
+        self.started: float | None = None
+        self.log: SessionLog | None = None
+        self.log_error = ""
 
     # -------------------------------------------------------------- wiring
 
@@ -43,9 +50,13 @@ class Session:
             self.transport = from_profile(self.profile, ask_password, confirm_host_key,
                                           ask_login)
         t = self.transport
+        self.dropped = False
 
         def opened():
             self.connected = True
+            self.started = time.monotonic()
+            audit("connected", self.profile)
+            self._start_log()
             on_update()
 
         def data(chunk: bytes):
@@ -53,19 +64,95 @@ class Session:
             on_update()
 
         def closed(reason: str):
+            was = self.connected
             self.connected = False
+            self.dropped = was and t.failed
+            if was:
+                audit("disconnected", self.profile, f"{reason}; after {duration(self.started)}",
+                      failed=t.failed)
+                self._stop_log(f"disconnected: {reason}")
+            else:
+                audit("connect-failed", self.profile, reason, failed=True)
             on_closed(reason)
 
         t.on_open, t.on_data, t.on_close = opened, data, closed
         t.open(self.screen.cols, self.screen.rows)
 
-    def disconnect(self) -> None:
+    def disconnect(self, reason: str = "closed by the user") -> None:
         if self.transport:
             t = self.transport
             # Stop callbacks first: the UI that would receive them may be going away.
             t.on_open, t.on_data, t.on_close = (lambda: None), (lambda data: None), (lambda r: None)
             t.close()
+        if self.connected:
+            audit("disconnected", self.profile, f"{reason}; after {duration(self.started)}")
+            self._stop_log(f"disconnected: {reason}")
         self.connected = False
+
+    def forget_transport(self) -> None:
+        """Drop the finished connection so ``connect`` makes a new one."""
+        self.disconnect()
+        self.transport = None
+
+    # ----------------------------------------------------------- idle time
+
+    def touch(self) -> None:
+        self.last_input = time.monotonic()
+
+    @property
+    def idle_limit(self) -> int:
+        """Minutes without input before the session is closed; 0 = never."""
+        return policy.current().idle_timeout(self.profile.idle_timeout)
+
+    def idle_left(self, now: float | None = None) -> float | None:
+        """Seconds until the idle timeout, or None when there is none."""
+        if not self.idle_limit:
+            return None
+        now = time.monotonic() if now is None else now
+        return self.idle_limit * 60 - (now - self.last_input)
+
+    @property
+    def may_reconnect(self) -> bool:
+        return self.profile.auto_reconnect and policy.current().auto_reconnect
+
+    # ------------------------------------------------------------- logging
+
+    def _start_log(self) -> None:
+        try:
+            log = open_log(self.profile)
+        except OSError as e:
+            self.log_error = f"cannot write the session log: {e.strerror or e}"
+            return
+        if log is None:
+            return
+        p = self.profile
+        where = {"local": "local shell", "serial": p.serial_device}.get(
+            p.transport, f"{p.host}:{p.effective_port}")
+        with self.lock:
+            log.mark(f"{p.name}: connected to {where} ({p.transport}, {p.emulation})")
+            self.log = log
+            self.screen.on_line_done = lambda line: log.write(line_text(line))
+
+    def _stop_log(self, why: str) -> None:
+        with self.lock:
+            log, self.log = self.log, None
+            if log is None:
+                return
+            self.screen.on_line_done = None
+            try:
+                lines = [line_text(line) for line in self.screen.lines]
+                if self.emulation.block_mode:
+                    log.screen(lines)
+                else:
+                    while lines and not lines[-1]:
+                        lines.pop()
+                    for line in lines:      # what was left on the screen
+                        log.write(line)
+                log.mark(why)
+            except OSError:
+                pass
+            finally:
+                log.close()
 
     def feed(self, data: bytes) -> None:
         with self.lock:
@@ -76,12 +163,20 @@ class Session:
             self.emulation.notice(text)
 
     def _reply(self, data: bytes) -> None:
+        if self.log is not None and self.emulation.block_mode:
+            # Block mode: keep each screen as the user sent it to the host
+            # (called under the lock, from the emulation).
+            try:
+                self.log.screen([line_text(line) for line in self.screen.lines])
+            except OSError:
+                pass
         if self.transport:
             self.transport.write(data)
 
     # --------------------------------------------------------------- input
 
     def send_text(self, text: str) -> None:
+        self.touch()
         if self.emulation.block_mode:
             with self.lock:
                 self.emulation.type_text(text)   # edits the screen; Enter sends it
@@ -106,6 +201,7 @@ class Session:
 
         Returns True if the key was consumed.
         """
+        self.touch()
         binding = self.keymap.lookup(name, self.emulation.app_cursor, self.emulation.app_keypad)
         if binding is None:
             if not text:
@@ -120,6 +216,7 @@ class Session:
         return True
 
     def run_binding(self, binding: Binding, depth: int = 0) -> None:
+        self.touch()
         if binding.kind == "send":
             self.send_text(binding.value)
         elif self.emulation.block_mode and self._block_action(binding.value):

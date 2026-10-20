@@ -15,7 +15,7 @@ import ssl
 import struct
 from typing import Callable
 
-from .base import Transport
+from .base import Transport, tcp_keepalive
 
 IAC, DONT, DO, WONT, WILL, SB, SE = 255, 254, 253, 252, 251, 250, 240
 NOP, BRK, AYT, GA, EOR_CMD = 241, 243, 246, 249, 239
@@ -218,6 +218,8 @@ class TelnetTransport(Transport):
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
         sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        if self.keepalive:
+            tcp_keepalive(sock, self.keepalive)
         if ctx:
             try:
                 sock = ctx.wrap_socket(sock, server_hostname=self.host)
@@ -248,6 +250,9 @@ class TelnetTransport(Transport):
 
     def send_break(self) -> None:
         self._raw_send(self.proto.brk())
+
+    def _keepalive(self) -> None:
+        self._raw_send(bytes([IAC, NOP]))   # ignored by every Telnet and TN3270 host
 
     @property
     def server_echoes(self) -> bool:

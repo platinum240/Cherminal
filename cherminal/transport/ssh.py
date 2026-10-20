@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from .base import Transport
+from .base import Transport, tcp_keepalive
 
 # ask_password(prompt) -> password or None to give up
 PasswordPrompt = Callable[[str], "str | None"]
@@ -117,10 +117,18 @@ class SSHTransport(Transport):
         self.client = client
         if self._closing:
             return
+        if self.keepalive:
+            ssh = client.get_transport()
+            ssh.set_keepalive(self.keepalive)      # paramiko sends the keep-alives itself
+            tcp_keepalive(ssh.sock, self.keepalive)
         self.chan = client.invoke_shell(term=self.term, width=self.cols, height=self.rows)
 
     def _read(self) -> bytes:
-        return self.chan.recv(65536)
+        data = self.chan.recv(65536)
+        if not data and self.chan.exit_status == -1 and not self._closing:
+            # The shell ended without an exit status: the connection broke.
+            raise OSError("the connection to the host was lost")
+        return data
 
     def _write(self, data: bytes) -> None:
         self.chan.sendall(data)

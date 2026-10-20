@@ -19,6 +19,12 @@ running unrestricted; check a file before deploying it with
     require_tls = false               # Telnet/TN3270 only over TLS
     require_tls_verify = false        # TLS sessions must check the host's certificate
     tls_ca_file = "/etc/cherminal/ca.pem"   # extra CA certificates to trust for TLS
+    max_idle_timeout = 15             # minutes; sessions may be shorter, never longer or off
+    auto_reconnect = false            # no reconnecting by itself after a dropped connection
+    session_logging = "allowed"       # "allowed", "never" or "always"
+    log_dir = "/var/log/cherminal/%u" # where session logs go (%u = user name)
+    log_total_mb = 10                 # session logs never take more than this in all
+    audit_log = true                  # connection log to syslog/journald (never keystrokes)
 """
 
 from __future__ import annotations
@@ -29,6 +35,7 @@ from pathlib import Path
 
 POLICY_PATH = Path("/etc/cherminal/policy.toml")
 TRANSPORTS = ("ssh", "telnet", "serial", "local")
+LOGGING = ("allowed", "never", "always")
 
 
 class PolicyError(ValueError):
@@ -44,6 +51,12 @@ class Policy:
     require_tls: bool = False
     require_tls_verify: bool = False
     tls_ca_file: str = ""
+    max_idle_timeout: int = 0         # minutes; 0 = sessions decide
+    auto_reconnect: bool = True       # sessions may reconnect by themselves
+    session_logging: str = "allowed"
+    log_dir: str = ""
+    log_total_mb: int = 10
+    audit_log: bool = False
     source: str = field(default="", compare=False)   # where it was read from
 
     @classmethod
@@ -53,7 +66,7 @@ class Policy:
         if unknown:
             raise PolicyError(f"unknown policy setting(s): {', '.join(sorted(unknown))}")
         for key in ("limited", "file_upload", "print_to_file", "require_tls",
-                    "require_tls_verify"):
+                    "require_tls_verify", "auto_reconnect", "audit_log"):
             if key in data and not isinstance(data[key], bool):
                 raise PolicyError(f"{key} must be true or false")
         values = dict(data)
@@ -66,8 +79,15 @@ class Policy:
                 raise PolicyError(f"allowed_transports: unknown transport(s) {', '.join(bad)}; "
                                   f"use {', '.join(TRANSPORTS)}")
             values["allowed_transports"] = tuple(kinds)
-        if "tls_ca_file" in values and not isinstance(values["tls_ca_file"], str):
-            raise PolicyError("tls_ca_file must be a file path")
+        for key in ("tls_ca_file", "log_dir"):
+            if key in values and not isinstance(values[key], str):
+                raise PolicyError(f"{key} must be a path")
+        for key, low in (("max_idle_timeout", 0), ("log_total_mb", 1)):
+            if key in values and (not isinstance(values[key], int)
+                                  or isinstance(values[key], bool) or values[key] < low):
+                raise PolicyError(f"{key} must be a whole number, {low} or more")
+        if values.get("session_logging", "allowed") not in LOGGING:
+            raise PolicyError(f"session_logging must be one of {', '.join(LOGGING)}")
         return cls(**values, source=source)
 
     @property
@@ -92,6 +112,15 @@ class Policy:
             if self.require_tls_verify and profile.tls and not profile.tls_verify:
                 raise PolicyError("this computer requires checking the host's certificate; "
                                   "turn on Check the host's certificate in the session")
+
+    def idle_timeout(self, minutes: int) -> int:
+        """A session's idle timeout in minutes (0 = none) after the policy's cap."""
+        if self.max_idle_timeout and (not minutes or minutes > self.max_idle_timeout):
+            return self.max_idle_timeout
+        return minutes
+
+    def logging(self, wanted: bool) -> bool:
+        return {"never": False, "always": True}.get(self.session_logging, wanted)
 
     def describe(self) -> str:
         lines = [f"{f.name} = {getattr(self, f.name)!r}" for f in fields(self)
