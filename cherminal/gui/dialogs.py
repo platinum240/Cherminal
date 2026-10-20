@@ -491,6 +491,10 @@ class SessionEditor(QDialog):
         self.font_size = QSpinBox(minimum=5, maximum=72)
         self.answerback = QLineEdit()
         self.local_echo = QCheckBox("Echo typed characters locally")
+        self.hotspots = QCheckBox("IBM 3270: click PF3=Exit, ENTER and other key names "
+                                  "on the screen")
+        self.hotspots.setToolTip("Key names the host shows become links: hovering shows a "
+                                 "pointing hand, clicking presses that key.")
         self.enter_sends = QComboBox()
         self.enter_sends.addItems(["cr", "crlf", "lf"])
         self.resize_mode = QComboBox()
@@ -502,7 +506,7 @@ class SessionEditor(QDialog):
                               ("Font size", self.font_size),
                               ("Answerback", self.answerback), ("Enter sends", self.enter_sends),
                               ("When the window resizes", self.resize_mode),
-                              ("", self.local_echo)):
+                              ("", self.local_echo), ("", self.hotspots)):
             f.addRow(label, widget)
         return w
 
@@ -744,6 +748,7 @@ class SessionEditor(QDialog):
         self.colours.load(p)
         self.answerback.setText(p.answerback)
         self.local_echo.setChecked(p.local_echo)
+        self.hotspots.setChecked(p.hotspots)
         self.enter_sends.setCurrentText(p.enter_sends)
         self.resize_mode.setCurrentIndex(max(0, self.resize_mode.findData(p.resize_mode)))
         self.keymap.setCurrentIndex(max(0, self.keymap.findData(p.keymap)))
@@ -792,6 +797,7 @@ class SessionEditor(QDialog):
             font_size=self.font_size.value(), **self.colours.settings(),
             keymap=self.keymap.currentData(), backspace=self.backspace.currentData(),
             answerback=self.answerback.text(), local_echo=self.local_echo.isChecked(),
+            hotspots=self.hotspots.isChecked(),
             enter_sends=self.enter_sends.currentText(),
             resize_mode=self.resize_mode.currentData(), printer=self._printer_name(),
             host_print=self.host_print.isChecked(), idle_timeout=self.idle_timeout.value(),

@@ -8,12 +8,14 @@ import threading
 from dataclasses import replace
 
 from PyQt6.QtCore import QObject, QRect, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import (QClipboard, QColor, QFont, QFontMetrics, QFontMetricsF, QGuiApplication, QKeyEvent,
-                         QMouseEvent, QPainter, QWheelEvent)
+from PyQt6.QtGui import (QClipboard, QColor, QCursor, QFont, QFontMetrics, QFontMetricsF,
+                         QGuiApplication, QKeyEvent, QMouseEvent, QPainter, QWheelEvent)
 from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu,
                              QMessageBox, QProgressDialog, QWidget)
 
 from .. import policy
+from ..emulation.hotspots import hotspot_at
+from ..keymap import Binding
 from ..screen import Attr
 from ..session import Session
 from .colors import ensure_contrast, resolve
@@ -68,6 +70,12 @@ class TerminalWidget(QWidget):
                                  and session.profile.transport == "ssh"
                                  and policy.current().file_upload)
         self.setAcceptDrops(self.transfer_enabled)
+        # Block-mode screens: PF3=Exit and the like can be clicked.
+        self.hotspots = (session.emulation.block_mode and session.profile.hotspots
+                         and not session.emulation.printer)
+        self.setMouseTracking(self.hotspots)
+        self._hot: tuple[int, int, int, str] | None = None     # row, start, end, action
+        self._hot_press: tuple[int, int, int, str] | None = None
         self._uploading = False
         self._cancel_upload = False
 
@@ -211,6 +219,8 @@ class TerminalWidget(QWidget):
         self._last_grid = (s.cols, s.rows)
         if not self._repaint.isActive():
             self._repaint.start()
+        if self.hotspots and self.underMouse():
+            self._hover(self.mapFromGlobal(QCursor.pos()))      # the screen changed under it
         title = self.session.screen.title
         if title != self._last_title:
             self._last_title = title
@@ -592,9 +602,43 @@ class TerminalWidget(QWidget):
         col = max(0, min(s.cols, (int(pos.x()) - self.offset_x) // self.cw))
         return history - self.scroll_offset + row, col
 
+    # ------------------------------------------------------------- hotspots
+
+    def _hotspot(self, pos) -> tuple[int, int, int, str] | None:
+        """The clickable key name (PF3=Exit, ENTER, ...) under ``pos``."""
+        if not self.hotspots or self.scroll_offset:
+            return None
+        s = self.session.screen
+        x, y = int(pos.x()) - self.offset_x, int(pos.y()) - self.offset_y
+        if x < 0 or y < 0:
+            return None
+        row, col = y // self.ch, x // self.cw
+        if row >= s.rows or col >= s.cols:
+            return None
+        with self.session.lock:
+            spot = hotspot_at(self._line_text(s.lines[row]), col)
+        return (row, spot.start, spot.end, spot.action) if spot else None
+
+    def _hover(self, pos) -> None:
+        hot = self._hotspot(pos)
+        if hot != self._hot:
+            self._hot = hot
+            self.setCursor(Qt.CursorShape.PointingHandCursor if hot
+                           else Qt.CursorShape.IBeamCursor)
+            self.update()
+
+    def leaveEvent(self, event) -> None:
+        if self._hot:
+            self._hot = None
+            self.setCursor(Qt.CursorShape.IBeamCursor)
+            self.update()
+        super().leaveEvent(event)
+
     def mousePressEvent(self, event: QMouseEvent) -> None:
         self.session.touch()
         if event.button() == Qt.MouseButton.LeftButton:
+            plain = event.modifiers() == Qt.KeyboardModifier.NoModifier
+            self._hot_press = self._hotspot(event.position()) if plain else None
             self.match = None
             self.sel_start = self.sel_end = self._cell_at(event.position())
             self.update()
@@ -605,8 +649,18 @@ class TerminalWidget(QWidget):
         if self.sel_start is not None and event.buttons() & Qt.MouseButton.LeftButton:
             self.sel_end = self._cell_at(event.position())
             self.update()
+        elif self.hotspots and not event.buttons():
+            self._hover(event.position())
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        press, self._hot_press = self._hot_press, None
+        if (press and event.button() == Qt.MouseButton.LeftButton and not self._sel_range()
+                and self._hotspot(event.position()) == press):
+            # A click (not a drag to select) on a key name presses that key.
+            self.clear_selection()
+            self.session.run_binding(Binding("action", press[3]))
+            self._on_update()
+            return
         text = self.selected_text()
         if text:
             QGuiApplication.clipboard().setText(text, QClipboard.Mode.Selection)
@@ -704,6 +758,13 @@ class TerminalWidget(QWidget):
                 if not (0 <= line_no < len(lines)):
                     continue
                 self._paint_line(p, row, line_no, lines[line_no], s.reverse_screen)
+            if self._hot and self.scroll_offset == 0:
+                row, start, end, _ = self._hot
+                if row < s.rows and end <= s.cols:
+                    fg, _ = self._colors(s.lines[row][start].attr, False, s.reverse_screen)
+                    p.setPen(fg)
+                    y = row * self.ch + self.ch - 1
+                    p.drawLine(start * self.cw, y, end * self.cw - 1, y)
             if s.cursor_visible and self.scroll_offset == 0:
                 rect = QRect(s.x * self.cw, s.y * self.ch, self.cw, self.ch)
                 cursor = QColor(*sch.cursor)

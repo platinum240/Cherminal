@@ -28,6 +28,7 @@ class Emulation:
     family = ""                 # "ibm3270" / "ibm5250" for the IBM block-mode terminals
     block_mode = False          # True: keys edit a local buffer (see ibm3270)
     fixed_size = False          # True: the host sets the grid; the window can't resize it
+    printer = False             # True: a printer session (3287), no keyboard
 
     def __init__(self, screen: Screen, reply: Callable[[bytes], None] | None = None,
                  encoding: str = "utf-8", answerback: str = ""):

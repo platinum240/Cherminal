@@ -94,6 +94,7 @@ class SessionProfile:
     log_session: bool = False         # capture the session's text to a log file
     log_file_kb: int = 1024           # start a new log file at this size
     log_keep: int = 2                 # older log files kept; older ones are deleted
+    hotspots: bool = True             # 3270: click PF3=Exit and other key names on screen
     keys: dict[str, str] = field(default_factory=dict)
     macros: dict[str, str] = field(default_factory=dict)
 
