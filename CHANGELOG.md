@@ -3,6 +3,11 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.8.1
+
+- The Cherminal logo is the window, taskbar and AppImage icon, and appears
+  in Help › About.
+
 ## 0.8.0
 
 - Print screen (Print key, Ctrl+Shift+P, Session menu, right-click) to a

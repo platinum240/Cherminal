@@ -28,5 +28,8 @@ version = { attr = "cherminal.__version__" }
 [tool.setuptools.packages.find]
 include = ["cherminal*"]
 
+[tool.setuptools.package-data]
+cherminal = ["resources/*.png", "resources/*.svg"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

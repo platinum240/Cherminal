@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="cherminal/resources/cherminal-logo-dark.png">
+    <img src="cherminal/resources/cherminal-logo-light.png" alt="Cherminal" width="420">
+  </picture>
+</p>
+
 # Cherminal
 
 A terminal emulator for Linux in the spirit of Century Software's TinyTerm:
