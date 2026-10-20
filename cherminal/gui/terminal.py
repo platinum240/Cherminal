@@ -13,6 +13,7 @@ from PyQt6.QtGui import (QClipboard, QColor, QFont, QFontMetrics, QFontMetricsF,
 from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu,
                              QMessageBox, QProgressDialog, QWidget)
 
+from .. import policy
 from ..screen import Attr
 from ..session import Session
 from .colors import ensure_contrast, resolve
@@ -36,9 +37,12 @@ class TerminalWidget(QWidget):
     find_requested = pyqtSignal()
     colours_requested = pyqtSignal()
 
-    def __init__(self, session: Session, parent=None):
+    def __init__(self, session: Session, parent=None, limited: bool = False):
         super().__init__(parent)
         self.session = session
+        # Limited: no file choosers or saving to files, which would let users
+        # browse and change the local disk.
+        self.limited = limited
         self.colour_override: dict | None = None    # one-off colours, not saved
         self.colors = resolve(session.profile)
         self._contrast_cache: dict = {}
@@ -56,7 +60,8 @@ class TerminalWidget(QWidget):
         self._last_title = ""
         self.match: tuple[int, int, int] | None = None   # (line, start col, end col)
         self.transfer_enabled = (session.profile.file_transfer
-                                 and session.profile.transport == "ssh")
+                                 and session.profile.transport == "ssh"
+                                 and policy.current().file_upload)
         self.setAcceptDrops(self.transfer_enabled)
         self._uploading = False
         self._cancel_upload = False
@@ -277,7 +282,7 @@ class TerminalWidget(QWidget):
         menu.addAction("Search…", self.find_requested.emit)
         menu.addAction("Colours for this session…", self.colours_requested.emit)
         menu.addAction("Print screen…", self.print_screen)
-        if self.transfer_enabled:
+        if self.transfer_enabled and not self.limited:
             menu.addSeparator()
             up = menu.addAction("Upload files…", self.choose_upload)
             up.setEnabled(self.session.connected and not self._uploading)
@@ -346,7 +351,8 @@ class TerminalWidget(QWidget):
 
     def print_screen(self) -> None:
         from .printing import print_screen
-        if print_screen(self, self):
+        allow_file = not self.limited and policy.current().print_to_file
+        if print_screen(self, self, allow_file=allow_file):
             self.message.emit("Screen sent to the printer")
         self.setFocus()
 
@@ -377,6 +383,8 @@ class TerminalWidget(QWidget):
             self.upload_files(paths)
 
     def choose_upload(self) -> None:
+        if self.limited:
+            return                  # a file chooser can browse and change the disk
         paths, _ = QFileDialog.getOpenFileNames(self, "Upload files")
         if paths:
             self.upload_files(paths)

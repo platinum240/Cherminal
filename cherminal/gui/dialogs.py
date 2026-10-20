@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QDialog, QDialo
                              QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout,
                              QWidget)
 
-from .. import emulation
+from .. import emulation, policy
 from ..config import BUNDLE_SUFFIX, TRANSPORTS, ProfileStore, SessionProfile
 from ..keymap import Binding, normalize_key
 from .colors import (PALETTE_NAMES, SCHEMES, contrast, ensure_contrast, palette_256,
@@ -416,7 +416,7 @@ class SessionEditor(QDialog):
         f = QFormLayout(w)
         self.name = QLineEdit()
         self.transport = QComboBox()
-        self.transport.addItems(TRANSPORTS)
+        self.transport.addItems([t for t in TRANSPORTS if t in policy.current().allowed_transports])
         self.transport.currentTextChanged.connect(self._transport_changed)
         self.host = QLineEdit()
         self.port = QSpinBox(maximum=65535, specialValueText="default")
@@ -618,6 +618,16 @@ class SessionEditor(QDialog):
         self.port.setValue(p.port)
         self.tls.setChecked(p.tls)
         self.tls_verify.setChecked(p.tls_verify)
+        rules = policy.current()
+        locked = "Required by this computer's policy"
+        if rules.require_tls:
+            self.tls.setChecked(True)
+            self.tls.setEnabled(False)
+            self.tls.setToolTip(locked)
+        if rules.require_tls_verify:
+            self.tls_verify.setChecked(True)
+            self.tls_verify.setEnabled(False)
+            self.tls_verify.setToolTip(locked)
         self.username.setText(p.username)
         self.ask_login.setChecked(p.ask_login)
         self.file_transfer.setChecked(p.file_transfer)
@@ -749,6 +759,8 @@ class SessionManager(QDialog):
         for p in self.store.list():
             if self.limited and p.transport == "local":
                 continue                # limited mode never offers a local shell
+            if p.transport not in policy.current().allowed_transports:
+                continue
             where = {"local": "local shell", "serial": p.serial_device}.get(p.transport, p.host)
             item = QListWidgetItem(f"{p.name}    —    {p.transport} {where} · {p.emulation}"
                                    + self.ORIGIN_LABEL[self.store.origin(p.name)])

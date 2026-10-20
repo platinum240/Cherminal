@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..config import SessionProfile, config_dir
 from ..emulation import EMULATIONS
+from .. import policy
 from .base import Transport
 
 
@@ -17,7 +18,8 @@ def from_profile(profile: SessionProfile, ask_password=None, confirm_host_key=No
         from .telnet import TelnetTransport
         return TelnetTransport(profile.host, profile.effective_port, term_type=emu.telnet_type,
                                tn3270=emu.block_mode, tls=profile.tls,
-                               tls_verify=profile.tls_verify)
+                               tls_verify=profile.tls_verify,
+                               ca_file=policy.current().tls_ca_file)
     if profile.transport == "ssh":
         from .ssh import SSHTransport
         return SSHTransport(profile.host, profile.effective_port, profile.username,

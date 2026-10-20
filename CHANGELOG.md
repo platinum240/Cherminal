@@ -3,6 +3,21 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.9.0
+
+- Site policy: an administrator's `/etc/cherminal/policy.toml` enforces
+  limited mode, which connections are allowed, SFTP upload, printing to a
+  file, and optionally TLS for Telnet/TN3270, certificate checking and an
+  in-house CA to trust. `cherminal --check-policy FILE` checks one first.
+  A broken policy stops Cherminal instead of running unrestricted.
+- Limited mode no longer offers a file chooser (right-click › Upload
+  files…) or printing to a PDF file.
+- A host can no longer freeze the client with endless or oversized escape
+  sequences, 3270 records or Telnet subnegotiations, or huge repeat counts.
+- eLux package: `packaging/elux/build-epm.sh` builds the package tree for
+  Unicon's `epkg`, and the release workflow publishes it.
+- Licensed under the Apache License 2.0.
+
 ## 0.8.3
 
 - No "Failed to register with host portal" warnings at start-up, whether or

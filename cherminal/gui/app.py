@@ -10,7 +10,7 @@ from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (QApplication, QFontDialog, QLabel, QMainWindow, QMessageBox,
                              QTabWidget, QToolBar, QVBoxLayout, QWidget)
 
-from .. import __version__
+from .. import __version__, policy
 from ..config import ProfileStore, SessionProfile
 from ..desktop import APP_ID, entry_installed
 from ..keymap import Binding
@@ -64,9 +64,10 @@ class MainWindow(QMainWindow):
         if not self.limited:
             self._action(f, "&Sessions…", self.open_manager, "Ctrl+Shift+O")
             self._action(f, "&Quick connect…", self.quick_connect, "Ctrl+Shift+N")
-            self._action(f, "&Local shell", lambda: self.open_session(
-                SessionProfile(name="Local shell", transport="local", emulation="xterm")),
-                "Ctrl+Shift+T")
+            if policy.current().local_shell:
+                self._action(f, "&Local shell", lambda: self.open_session(
+                    SessionProfile(name="Local shell", transport="local", emulation="xterm")),
+                    "Ctrl+Shift+T")
             f.addSeparator()
             self._action(f, "&Edit this session…", self.edit_current)
         self._action(f, "&Close tab", lambda: self.close_tab(self.tabs.currentIndex()),
@@ -121,7 +122,7 @@ class MainWindow(QMainWindow):
         except ValueError as e:
             QMessageBox.warning(self, "Session", f"Cannot open {profile.name}: {e}")
             return None
-        term = TerminalWidget(session)
+        term = TerminalWidget(session, limited=self.limited)
         if colours:
             term.set_colour_override(colours)
         term.find_requested.connect(self.open_search)

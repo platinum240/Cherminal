@@ -11,6 +11,10 @@
     cherminal --import site.cherminal
     cherminal --limited "Mainframe A"  locked down: File menu is Close tab / Exit only
     cherminal --install-desktop       add Cherminal to the desktop menu with its icon
+    cherminal --check-policy FILE     check a site policy file before deploying it
+
+An administrator's policy in /etc/cherminal/policy.toml (see cherminal.policy)
+applies to every start and cannot be turned off from the command line.
 """
 
 from __future__ import annotations
@@ -18,8 +22,9 @@ from __future__ import annotations
 import argparse
 import sys
 import tomllib
+from pathlib import Path
 
-from . import __version__, emulation
+from . import __version__, emulation, policy
 from .config import ProfileStore, SessionProfile
 
 
@@ -72,8 +77,29 @@ def main(argv: list[str] | None = None) -> int:
                          "shell; File offers only Close tab and Exit")
     ap.add_argument("--install-desktop", action="store_true",
                     help="add a menu entry and the Cherminal icon under ~/.local/share")
+    ap.add_argument("--check-policy", metavar="FILE",
+                    help="check a site policy file, print the settings it enforces, then exit")
     ap.add_argument("--version", action="version", version=f"cherminal {__version__}")
     args = ap.parse_args(argv)
+    if args.check_policy:
+        try:
+            rules = policy.read(Path(args.check_policy))
+        except policy.PolicyError as e:
+            print(f"cherminal: {e}", file=sys.stderr)
+            return 2
+        print(f"{args.check_policy} is valid. Settings it enforces:")
+        print(rules.describe())
+        return 0
+    try:
+        # A broken policy stops Cherminal rather than letting it run unrestricted.
+        policy.set_current(policy.load())
+    except policy.PolicyError as e:
+        print(f"cherminal: {e}", file=sys.stderr)
+        print("cherminal: not starting until the site policy is fixed; ask your administrator",
+              file=sys.stderr)
+        return 2
+    rules = policy.current()
+    limited = args.limited or rules.limited
     if args.install_desktop:
         from .desktop import install
         print(f"installed {install()}")
@@ -101,12 +127,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         profiles = build_profiles(args, store)
+        for p in profiles:
+            rules.check(p)
     except (FileNotFoundError, ValueError) as e:
         print(f"cherminal: {e}", file=sys.stderr)
         return 2
 
     from .gui.app import run
-    return run(profiles, store, show_manager=not profiles, limited=args.limited)
+    return run(profiles, store, show_manager=not profiles, limited=limited)
 
 
 if __name__ == "__main__":

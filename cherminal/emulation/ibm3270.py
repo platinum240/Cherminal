@@ -19,6 +19,10 @@ from __future__ import annotations
 from ..screen import DEFAULT_ATTR, Attr, Cell
 from .base import Emulation
 
+# The largest 3270 data stream record kept. A full 27x132 screen with every
+# order is well under 64 KB; anything bigger is broken and is thrown away.
+MAX_RECORD = 1024 * 1024
+
 IAC, EOR = 0xFF, 0xEF
 
 # Commands, local (CCW) and SNA codes.
@@ -93,6 +97,7 @@ class IBM3270(Emulation):
         super().__init__(screen, reply, encoding=encoding, answerback=answerback)
         screen.scrollback_limit = 0
         self._rec = bytearray()
+        self._rec_dropped = False
         self._iac = False
         self.on_status = lambda: None
         self.reset()
@@ -187,14 +192,22 @@ class IBM3270(Emulation):
                 self._iac = False
                 if b == EOR:
                     rec, self._rec = bytes(self._rec), bytearray()
-                    if rec:
+                    if rec and not self._rec_dropped:
                         self.process(rec)
+                    self._rec_dropped = False
                     continue
-                self._rec.append(b)          # IAC IAC -> one 0xFF
+                self._keep(b)                # IAC IAC -> one 0xFF
             elif b == IAC:
                 self._iac = True
             else:
-                self._rec.append(b)
+                self._keep(b)
+
+    def _keep(self, b: int) -> None:
+        if len(self._rec) >= MAX_RECORD:
+            # Oversized record: stop holding it and drop it at its EOR.
+            self._rec.clear()
+            self._rec_dropped = True
+        self._rec.append(b)
 
     def feed_text(self, text: str) -> None:
         pass  # 3270 data is binary; see feed()
