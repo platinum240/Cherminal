@@ -5,13 +5,14 @@ from __future__ import annotations
 import signal
 import sys
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QLoggingCategory, QTimer
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (QApplication, QFontDialog, QLabel, QMainWindow, QMessageBox,
                              QTabWidget, QToolBar, QVBoxLayout, QWidget)
 
 from .. import __version__
 from ..config import ProfileStore, SessionProfile
+from ..desktop import APP_ID, entry_installed
 from ..keymap import Binding
 from ..session import Session
 from .dialogs import SessionColoursDialog, SessionEditor, SessionManager
@@ -242,11 +243,18 @@ class MainWindow(QMainWindow):
 
 def run(profiles: list[SessionProfile], store: ProfileStore, show_manager: bool,
         limited: bool = False) -> int:
-    # Set before the QApplication exists: Qt registers the app ID with the
-    # desktop portal when it starts, and changing it afterwards makes Qt try
-    # a second registration, which the portal refuses with a warning.
     QApplication.setApplicationName("Cherminal")
-    QApplication.setDesktopFileName("cherminal")   # matches cherminal.desktop (taskbar icon)
+    # The desktop file name ties windows to cherminal.desktop (menu entry and
+    # taskbar icon). Qt registers it with the desktop portal at start-up, so
+    # it is set before the QApplication exists, and only when that file is
+    # installed: otherwise the portal answers "App info not found".
+    if entry_installed():
+        QApplication.setDesktopFileName(APP_ID)
+    else:
+        # Without the file the portal can only refuse (Qt may still register
+        # a name it derives from the program); that is harmless, so don't
+        # print it on every start. `cherminal --install-desktop` adds the file.
+        QLoggingCategory.setFilterRules("qt.qpa.services.warning=false")
     app = QApplication.instance() or QApplication(sys.argv)
     app.setWindowIcon(app_icon())
     win = MainWindow(store, limited=limited)

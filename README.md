@@ -90,6 +90,10 @@ cherminal "Warehouse"                  # a saved session
 Requires Python 3.11+, PyQt6, paramiko and pyserial. For serial ports your
 user usually needs to be in the `dialout` group.
 
+To add Cherminal to the applications menu with its icon (for the current
+user, under `~/.local/share`), run `cherminal --install-desktop` once. This
+works for the AppImage too (`./Cherminal-*.AppImage --install-desktop`).
+
 ## Keymaps
 
 Key names look like `F5`, `Shift+F1`, `Ctrl+Up`, `Keypad5`, `app:Up`

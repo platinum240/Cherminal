@@ -10,6 +10,7 @@
     cherminal --export site.cherminal "Mainframe A" "Mainframe B"
     cherminal --import site.cherminal
     cherminal --limited "Mainframe A"  locked down: File menu is Close tab / Exit only
+    cherminal --install-desktop       add Cherminal to the desktop menu with its icon
 """
 
 from __future__ import annotations
@@ -69,8 +70,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--limited", action="store_true",
                     help="lock the menus: no session editing, new connections or local "
                          "shell; File offers only Close tab and Exit")
+    ap.add_argument("--install-desktop", action="store_true",
+                    help="add a menu entry and the Cherminal icon under ~/.local/share")
     ap.add_argument("--version", action="version", version=f"cherminal {__version__}")
     args = ap.parse_args(argv)
+    if args.install_desktop:
+        from .desktop import install
+        print(f"installed {install()}")
+        return 0
 
     store = ProfileStore()
     if args.list:
