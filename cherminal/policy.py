@@ -12,9 +12,16 @@ be read or has a mistake in it stops Cherminal from starting rather than
 running unrestricted; check a file before deploying it with
 ``cherminal --check-policy FILE``.
 
+In limited mode (``limited = true`` here, or ``--limited``) IND$FILE
+transfers are off unless the file sets ``file_upload = true`` or
+``file_download = true`` explicitly, and even then they only read and write
+files directly in the user's Downloads folder, chosen by name: no file
+browser opens.
+
     limited = true                    # same as --limited, always on
     allowed_transports = ["telnet", "ssh"]
-    file_upload = false               # no SFTP upload, even where a session enables it
+    file_upload = false               # no SFTP upload or IND$FILE send, even where enabled
+    file_download = false             # no IND$FILE receive from a mainframe
     print_to_file = false             # Print screen offers printers only, never PDF
     require_tls = false               # Telnet/TN3270 only over TLS
     require_tls_verify = false        # TLS sessions must check the host's certificate
@@ -48,6 +55,7 @@ class Policy:
     limited: bool = False
     allowed_transports: tuple[str, ...] = TRANSPORTS
     file_upload: bool = True
+    file_download: bool = True
     print_to_file: bool = True
     require_tls: bool = False
     require_tls_verify: bool = False
@@ -60,14 +68,15 @@ class Policy:
     audit_log: bool = False
     ssh_known_hosts_only: bool = False   # refuse SSH hosts whose keys aren't known
     source: str = field(default="", compare=False)   # where it was read from
+    given: frozenset = field(default=frozenset(), compare=False)   # settings in the file
 
     @classmethod
     def from_dict(cls, data: dict, source: str = "") -> "Policy":
-        known = {f.name for f in fields(cls)} - {"source"}
+        known = {f.name for f in fields(cls)} - {"source", "given"}
         unknown = set(data) - known
         if unknown:
             raise PolicyError(f"unknown policy setting(s): {', '.join(sorted(unknown))}")
-        for key in ("limited", "file_upload", "print_to_file", "require_tls",
+        for key in ("limited", "file_upload", "file_download", "print_to_file", "require_tls",
                     "require_tls_verify", "auto_reconnect", "audit_log", "ssh_known_hosts_only"):
             if key in data and not isinstance(data[key], bool):
                 raise PolicyError(f"{key} must be true or false")
@@ -90,7 +99,7 @@ class Policy:
                 raise PolicyError(f"{key} must be a whole number, {low} or more")
         if values.get("session_logging", "allowed") not in LOGGING:
             raise PolicyError(f"session_logging must be one of {', '.join(LOGGING)}")
-        return cls(**values, source=source)
+        return cls(**values, source=source, given=frozenset(data))
 
     @property
     def active(self) -> bool:
@@ -99,6 +108,16 @@ class Policy:
     @property
     def local_shell(self) -> bool:
         return "local" in self.allowed_transports and not self.limited
+
+    def file_transfer(self, send: bool, limited: bool = False) -> bool:
+        """May an IND$FILE transfer go this way (send = to the host)? In
+        limited mode only if the policy file allows it in so many words."""
+        key = "file_upload" if send else "file_download"
+        if not getattr(self, key):
+            return False
+        if limited or self.limited:
+            return key in self.given
+        return True
 
     def check(self, profile) -> None:
         """Raise PolicyError if the policy does not allow this session."""
@@ -126,7 +145,7 @@ class Policy:
 
     def describe(self) -> str:
         lines = [f"{f.name} = {getattr(self, f.name)!r}" for f in fields(self)
-                 if f.name != "source"]
+                 if f.name not in ("source", "given")]
         return "\n".join(lines)
 
 

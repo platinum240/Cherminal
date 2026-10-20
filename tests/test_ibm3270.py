@@ -205,7 +205,7 @@ def test_query_reply():
             assert int.from_bytes(body[4:6], "big") == 43
         i += length
     assert i == len(reply)
-    assert qcodes == [0x80, 0x81, 0x86, 0x87, 0x88, 0xA6]
+    assert qcodes == [0x80, 0x81, 0x86, 0x87, 0x88, 0x95, 0xA6]
 
 
 def test_split_records_and_ff_bytes():

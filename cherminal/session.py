@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
 from typing import Callable
 
 from . import emulation, policy
@@ -67,6 +68,9 @@ class Session:
             was = self.connected
             self.connected = False
             self.dropped = was and t.failed
+            if hasattr(self.emulation, "abort_transfer"):
+                with self.lock:
+                    self.emulation.abort_transfer(f"The connection closed: {reason}")
             if was:
                 audit("disconnected", self.profile, f"{reason}; after {duration(self.started)}",
                       failed=t.failed)
@@ -246,6 +250,42 @@ class Session:
         if name in self.profile.macros:
             self.run_binding(Binding.parse(self.profile.macros[name]), depth)
 
+    # -------------------------------------------------------- file transfer
+
+    @property
+    def can_transfer(self) -> bool:
+        """An IBM 3270 display session, which can run IND$FILE."""
+        return hasattr(self.emulation, "start_transfer")
+
+    def start_transfer(self, opts, limited: bool = False, on_progress=None, on_done=None):
+        """Start an IND$FILE transfer (see emulation.indfile), within the site
+        policy. In limited mode the local file must sit directly in
+        :func:`transfer_folder`."""
+        if not self.can_transfer:
+            raise ValueError("file transfer needs an IBM 3270 display session")
+        rules = policy.current()
+        if not rules.file_transfer(opts.send, limited):
+            raise policy.PolicyError("sending files to the host is not allowed on this computer"
+                                     if opts.send else
+                                     "receiving files from the host is not allowed on this "
+                                     "computer")
+        if limited or rules.limited:
+            local = Path(opts.local_file)
+            if (local.resolve().parent != transfer_folder().resolve()
+                    or local.name.startswith(".")):
+                raise policy.PolicyError(f"in limited mode files can only be transferred "
+                                         f"to and from {transfer_folder()}")
+        if not self.connected:
+            raise ValueError("connect to the host first")
+        with self.lock:
+            return self.emulation.start_transfer(opts, on_progress, on_done)
+
+    def cancel_transfer(self) -> None:
+        with self.lock:
+            t = getattr(self.emulation, "transfer", None)
+            if t and not t.finished:
+                t.cancel()
+
     def resize(self, cols: int, rows: int) -> None:
         if self.emulation.fixed_size:
             return
@@ -253,3 +293,8 @@ class Session:
             self.screen.resize(cols, rows)
         if self.transport:
             self.transport.resize(cols, rows)
+
+
+def transfer_folder() -> Path:
+    """Where limited-mode file transfers read and write: ~/Downloads."""
+    return Path.home() / "Downloads"

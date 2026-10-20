@@ -92,8 +92,26 @@ class MainWindow(QMainWindow):
         self._action(s, "&Print screen…", lambda: self._term() and self._term().print_screen(),
                      "Ctrl+Shift+P")
         self._action(s, "&Reset terminal", lambda: self._run("reset"))
+        s.addSeparator()
+        self.transfer_action = self._action(s, "&Transfer file…", self.transfer_file)
+        self.transfer_action.setVisible(False)          # IBM 3270 display sessions only
         h = mb.addMenu("&Help")
         self._action(h, "&About Cherminal", self.about)
+
+    def transfer_file(self) -> None:
+        """IND$FILE send or receive for the current 3270 session."""
+        term = self._term()
+        if not term or not term.session.can_transfer:
+            return
+        rules = policy.current()
+        if not (rules.file_transfer(True, self.limited)
+                or rules.file_transfer(False, self.limited)):
+            QMessageBox.information(self, "Transfer file",
+                                    "File transfer is not allowed on this computer.")
+            return
+        from .transfer import TransferDialog
+        TransferDialog(term, limited=self.limited, parent=self).exec()
+        term.setFocus()
 
     def about(self) -> None:
         box = QMessageBox(self)
@@ -152,6 +170,7 @@ class MainWindow(QMainWindow):
         term = self._term()
         self.fkey_bar.clear()
         self.search.set_terminal(term)
+        self.transfer_action.setVisible(bool(term and term.session.can_transfer))
         if not term:
             self.status.setText("")
             return

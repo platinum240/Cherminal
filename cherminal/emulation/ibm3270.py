@@ -10,6 +10,8 @@ Records arrive framed as the Telnet layer passes them: data bytes with 0xFF
 doubled and each record ended by IAC EOR. Each :meth:`reply` call sends one
 record; the Telnet layer adds the IAC EOR.
 
+IND$FILE file transfers (DFT mode) are in :mod:`.indfile`.
+
 References: IBM GA23-0059 "3270 Data Stream Programmer's Reference",
 RFC 1576 (TN3270), RFC 2355 (TN3270E, not negotiated here).
 """
@@ -17,6 +19,7 @@ RFC 1576 (TN3270), RFC 2355 (TN3270E, not negotiated here).
 from __future__ import annotations
 
 from ..screen import DEFAULT_ATTR, Attr, Cell
+from . import indfile
 from .base import Emulation
 
 # The largest 3270 data stream record kept. A full 27x132 screen with every
@@ -104,6 +107,7 @@ class IBM3270(Emulation):
         self._rec_dropped = False
         self._iac = False
         self.on_status = lambda: None
+        self.transfer: indfile.DFTTransfer | None = None     # IND$FILE in progress
         self.reset()
 
     # ----------------------------------------------------------- state
@@ -410,6 +414,8 @@ class IBM3270(Emulation):
                     self.reply(self._read_buffer(self.aid))
                 elif kind is not None:
                     self.reply(self._read_modified(self.aid))
+            elif sfid == indfile.SF_TRANSFER:               # IND$FILE (DFT)
+                self._transfer_data(data[i:i + length])
             elif sfid == 0x40 and len(body) >= 2:          # Outbound 3270DS
                 cmd = COMMANDS.get(body[1])
                 if cmd == CMD_EW:
@@ -437,10 +443,77 @@ class IBM3270(Emulation):
         modes = bytes([0x00, 0x01, 0x02])
         implicit = bytes([0x00, 0x00, 0x0B, 0x01, 0x00, 0x00, 0x50, 0x00, 0x18]) + \
             cols.to_bytes(2, "big") + rows.to_bytes(2, "big")
+        # Distributed Data Management: tells IND$FILE to use DFT transfers.
+        ddm = bytes(2) + indfile.BUFFER_SIZE.to_bytes(2, "big") * 2 + bytes([0x01, 0x01])
         replies = [(0x81, usable), (0x86, color), (0x87, highlight), (0x88, modes),
-                   (0xA6, implicit)]
+                   (0x95, ddm), (0xA6, implicit)]
         summary = sf(0x80, bytes([0x80] + [q for q, _ in replies]))
         return bytes([AID_SF]) + summary + b"".join(sf(q, b) for q, b in replies)
+
+    # ---------------------------------------------------- file transfer
+
+    def start_transfer(self, opts: indfile.TransferOptions, on_progress=None,
+                       on_done=None) -> indfile.DFTTransfer:
+        """Type the IND$FILE command into the input field and press Enter.
+
+        Raises ValueError when it cannot start (keyboard locked, no input
+        field, field too short) and OSError when the local file can't be
+        opened; the host then drives the transfer through :meth:`process`.
+        """
+        if self.transfer and not self.transfer.finished:
+            raise ValueError("a file transfer is already running")
+        if self.locked:
+            raise ValueError("the keyboard is locked; wait for the host or press Reset")
+        command = opts.command()
+        if self._prime_field() < len(command):
+            raise ValueError("there is no input field long enough for the IND$FILE command "
+                             "on this screen; go to a TSO READY prompt, a CICS transaction "
+                             "screen or the CMS command line first")
+
+        def done(ok: bool, message: str) -> None:
+            self.message = "" if ok else "X File transfer"
+            (on_done or (lambda ok, message: None))(ok, message)
+
+        self.transfer = indfile.DFTTransfer(opts, self.encoding,
+                                            on_progress or (lambda done, total: None), done)
+        for ch in command:
+            # $ is typed as X'5B' whatever the code page: IND$FILE's own name.
+            self._type_code(0x5B) if ch == "$" else self._type_char(ch)
+        self._attention(AID_ENTER)
+        self._render()
+        return self.transfer
+
+    def abort_transfer(self, reason: str) -> None:
+        """End a transfer locally, e.g. when the connection drops."""
+        if self.transfer and not self.transfer.finished:
+            self.transfer.finish(False, reason)
+
+    def _prime_field(self) -> int:
+        """Empty the input field at or after the cursor and put the cursor at
+        its start (like x3270 before a transfer); returns its length."""
+        if not self._formatted():
+            for p in range(self.cursor, self.size):
+                self.buf[p] = 0
+            return self.size - self.cursor
+        pos = self.cursor
+        if self._protected(pos):
+            pos = self._next_unprotected(pos)
+            if self._protected(pos):
+                return 0                            # no input fields at all
+        start = self.field_start(pos)
+        span = [p % self.size for p in self._field_range(start)]
+        for p in span:
+            self.buf[p], self.cx[p] = 0, (0, 0, 0)
+        self.cursor = span[0] if span else pos
+        return len(span)
+
+    def _transfer_data(self, sf: bytes) -> None:
+        if self.transfer is None:
+            return                                  # no transfer of ours: ignore
+        reply = self.transfer.handle(sf)
+        if reply:
+            self.aid = AID_SF
+            self.reply(reply)
 
     # ----------------------------------------------------------- reading
 
@@ -448,6 +521,8 @@ class IBM3270(Emulation):
         return bytearray([aid]) + encode_address(self.cursor, self.size)
 
     def _read_modified(self, aid: int) -> bytes:
+        if aid == AID_SF and self.transfer and self.transfer.saved:
+            return self.transfer.saved          # the host lost an IND$FILE reply
         if aid in SHORT_READ:
             return bytes([aid])
         out = self._header(aid)
