@@ -242,9 +242,12 @@ class MainWindow(QMainWindow):
 
 def run(profiles: list[SessionProfile], store: ProfileStore, show_manager: bool,
         limited: bool = False) -> int:
+    # Set before the QApplication exists: Qt registers the app ID with the
+    # desktop portal when it starts, and changing it afterwards makes Qt try
+    # a second registration, which the portal refuses with a warning.
+    QApplication.setApplicationName("Cherminal")
+    QApplication.setDesktopFileName("cherminal")   # matches cherminal.desktop (taskbar icon)
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setApplicationName("Cherminal")
-    app.setDesktopFileName("cherminal")   # matches cherminal.desktop for the taskbar icon
     app.setWindowIcon(app_icon())
     win = MainWindow(store, limited=limited)
     # Every way out (last window closed, Ctrl+C, kill, logout) closes the

@@ -3,6 +3,11 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.8.2
+
+- No more "Failed to register with host portal" warning at start-up on
+  desktops with xdg-desktop-portal.
+
 ## 0.8.1
 
 - The Cherminal logo is the window, taskbar and AppImage icon, and appears
