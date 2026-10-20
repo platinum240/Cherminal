@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QKeyEvent, QPainter
+from PyQt6.QtCore import QRegularExpression, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QKeyEvent, QPainter, QRegularExpressionValidator
 from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox,
                              QFileDialog, QFontComboBox, QFormLayout, QGridLayout, QHBoxLayout,
                              QHeaderView, QLabel,
@@ -424,6 +424,13 @@ class SessionEditor(QDialog):
         self.port = QSpinBox(maximum=65535, specialValueText="default")
         self.tls = QCheckBox("Use TLS (port 992 by default)")
         self.tls_verify = QCheckBox("Check the host's certificate")
+        self.device_name = QLineEdit(placeholderText="chosen by the host")
+        self.device_name.setMaxLength(10)
+        self.device_name.setValidator(QRegularExpressionValidator(
+            QRegularExpression("[A-Za-z0-9@#$_]{0,10}"), self.device_name))
+        self.device_name.setToolTip("IBM i workstation device name (up to 10 characters: "
+                                    "A-Z, 0-9, @ # $ _). Leave empty for a QPADEVnnnn "
+                                    "device chosen by the host.")
         self.username = QLineEdit()
         self.ask_login = QCheckBox("Ask for user name and password when connecting")
         self.ask_login.setToolTip("For users whose login on this host isn't their "
@@ -452,6 +459,7 @@ class SessionEditor(QDialog):
                 ("Name", self.name, None), ("Connection", self.transport, None),
                 ("Host", self.host, {"ssh", "telnet"}), ("Port", self.port, {"ssh", "telnet"}),
                 ("Security", self.tls, {"telnet"}), ("", self.tls_verify, {"telnet"}),
+                ("Device name", self.device_name, {"telnet"}),
                 ("User", self.username, {"ssh"}), ("Login", self.ask_login, {"ssh"}),
                 ("Private key", ident_row, {"ssh"}),
                 ("Command", self.command, {"local"}),
@@ -469,6 +477,8 @@ class SessionEditor(QDialog):
         f = QFormLayout(w)
         self.emulation = QComboBox()
         self.emulation.addItems(list(emulation.EMULATIONS))
+        self.emulation.currentTextChanged.connect(
+            lambda _: self._transport_changed(self.transport.currentText()))
         self.encoding = QComboBox(editable=True)
         self.encoding.addItems(ENCODINGS)
         self.encoding.setItemText(0, "")
@@ -517,7 +527,9 @@ class SessionEditor(QDialog):
         hint = QLabel("Values use \\e for Esc, \\r Enter, \\xHH bytes, ^A control keys, or "
                       "action:paste / action:copy / action:break / action:macro:NAME. "
                       "IBM 3270 keys: action:enter, action:pf1-pf24, action:pa1-pa3, "
-                      "action:clear, action:reset and the others in the README.")
+                      "action:clear, action:reset and the others in the README. "
+                      "IBM 5250 keys: action:enter, action:f1-f24, action:field-exit, "
+                      "action:attn, action:sysreq, action:roll-up/roll-down.")
         hint.setWordWrap(True)
         hint.setFont(QFont(hint.font().family(), max(7, hint.font().pointSize() - 1)))
         lay.addWidget(QLabel("Key overrides for this session"))
@@ -662,6 +674,7 @@ class SessionEditor(QDialog):
             return
         emu = emulation.EMULATIONS[profile.emulation]
         dlg = KeyboardEditor(base, self.keys.items(), block_mode=emu.block_mode,
+                             family=emu.family,
                              macros=list(self.macros.items()), store=self.store,
                              base_name=profile.keymap or emu.keymap, parent=self)
         if dlg.exec():
@@ -672,10 +685,16 @@ class SessionEditor(QDialog):
     def _transport_changed(self, kind: str) -> None:
         for widget, kinds in self._rows.values():
             self._form.setRowVisible(widget, kind in kinds)
+        self._form.setRowVisible(self.device_name, kind == "telnet" and self._is_5250())
         if hasattr(self, "transfer_tab"):
             ssh = kind == "ssh"
             self.transfer_box.setVisible(ssh)
             self.transfer_ssh_only.setVisible(not ssh)
+
+    def _is_5250(self) -> bool:
+        emu = emulation.EMULATIONS.get(self.emulation.currentText()) \
+            if hasattr(self, "emulation") else None
+        return emu is not None and emu.family == "ibm5250"
 
     def _browse_key(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Private key", "~/.ssh")
@@ -690,6 +709,7 @@ class SessionEditor(QDialog):
         self.port.setValue(p.port)
         self.tls.setChecked(p.tls)
         self.tls_verify.setChecked(p.tls_verify)
+        self.device_name.setText(p.device_name)
         rules = policy.current()
         locked = "Required by this computer's policy"
         if rules.require_tls:
@@ -714,6 +734,7 @@ class SessionEditor(QDialog):
         self.stop_bits.setCurrentText(f"{p.stop_bits:g}")
         self.flow.setCurrentText(p.flow_control)
         self.emulation.setCurrentText(p.emulation)
+        self._transport_changed(p.transport)
         self.encoding.setCurrentText(p.encoding)
         self.cols.setValue(p.cols)
         self.rows.setValue(p.rows)
@@ -756,6 +777,7 @@ class SessionEditor(QDialog):
             name=self.name.text().strip() or "Untitled", transport=self.transport.currentText(),
             host=self.host.text().strip(), port=self.port.value(),
             tls=self.tls.isChecked(), tls_verify=self.tls_verify.isChecked(),
+            device_name=self.device_name.text().strip().upper() if self._is_5250() else "",
             username=self.username.text().strip(), ask_login=self.ask_login.isChecked(),
             file_transfer=self.file_transfer.isChecked(),
             upload_dir=self.upload_dir.text().strip(),

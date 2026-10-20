@@ -53,6 +53,7 @@ class SessionProfile:
     port: int = 0                     # 0 = transport default
     tls: bool = False                 # telnet: TLS (e.g. TN3270 on port 992)
     tls_verify: bool = True           # check the host's certificate
+    device_name: str = ""             # TN5250: workstation device name (NEW-ENVIRON DEVNAME)
     username: str = ""
     identity_file: str = ""           # SSH private key
     ask_login: bool = False           # SSH: ask for user name and password on connect
@@ -121,8 +122,12 @@ class SessionProfile:
                 raise ValueError(f"{key} cannot be negative")
         if self.log_file_kb < 16:
             raise ValueError("log_file_kb must be at least 16")
-        if emulation.EMULATIONS[self.emulation].block_mode and self.transport != "telnet":
-            raise ValueError(f"{self.emulation} needs a telnet (TN3270) connection")
+        emu = emulation.EMULATIONS[self.emulation]
+        if emu.block_mode and self.transport != "telnet":
+            kind = "TN5250" if emu.family == "ibm5250" else "TN3270"
+            raise ValueError(f"{self.emulation} needs a telnet ({kind}) connection")
+        if self.device_name and not re.fullmatch(r"[A-Z0-9@#$_]{1,10}", self.device_name):
+            raise ValueError("device name must be up to 10 characters: A-Z, 0-9, @ # $ _")
 
     @property
     def effective_port(self) -> int:
@@ -335,7 +340,7 @@ class ProfileStore:
         default = emulation.EMULATIONS[profile.emulation].keymap
         km = self.load_keymap_layers(profile.keymap or default)
         if emulation.EMULATIONS[profile.emulation].block_mode:
-            # 3270 keys are actions, not bytes; Enter/Backspace settings don't apply.
+            # 3270/5250 keys are actions, not bytes; Enter/Backspace settings don't apply.
             km.update(profile.keys)
             return km
         if profile.backspace == "bs":

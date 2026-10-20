@@ -25,6 +25,7 @@ class Emulation:
     term_type = "dumb"          # value for $TERM / SSH pty request
     telnet_type = "DUMB"        # Telnet TTYPE (RFC 1091) answer
     keymap = "vt100"            # built-in keymap this emulation starts from
+    family = ""                 # "ibm3270" / "ibm5250" for the IBM block-mode terminals
     block_mode = False          # True: keys edit a local buffer (see ibm3270)
     fixed_size = False          # True: the host sets the grid; the window can't resize it
 

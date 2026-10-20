@@ -21,10 +21,11 @@ sources it was derived from, and the architecture.
 
 - **Emulations:** VT100, VT220, VT320, VT420, SCO ANSI, AT386, Linux console,
   xterm (256/true colour), Wyse 50, Wyse 60, TeleVideo 925/950, ADM-3A,
-  and IBM 3278/3279 models 2-5 for mainframes (TN3270).
+  IBM 3278/3279 models 2-5 for mainframes (TN3270), and IBM 5250 display
+  stations (3179-2, 5251-11, 3477-FC) for IBM i / AS/400 (TN5250).
 - **Connections:** SSH (keys, agent, password, host-key verification),
-  Telnet (TTYPE, NAWS, binary, echo/SGA, optional TLS), TN3270, serial
-  ports, local shell.
+  Telnet (TTYPE, NAWS, binary, echo/SGA, optional TLS), TN3270, TN5250
+  (with a fixed device name if wanted), serial ports, local shell.
 - **Key mapping:** per-emulation defaults, reusable keymap files with
   inheritance, per-session overrides, application cursor/keypad aware, a
   press-to-capture editor, and `action:` bindings (paste, break, macros).
@@ -286,8 +287,80 @@ The status bar shows the 3270 operator information: `X System` while the
 host has the keyboard locked, `X Protected` when typing outside an input
 field, `Insert`, and the cursor's row/column.
 
-Not yet supported: TN3270E (LU names, SysReq/Attn), 3287 printing, file
-transfer (IND$FILE), and 5250 (IBM i).
+Not yet supported: TN3270E (LU names, SysReq/Attn), 3287 printing and file
+transfer (IND$FILE). For IBM i, see the next section.
+
+## IBM i (TN5250)
+
+Choose connection **telnet** and one of these emulations:
+
+| Emulation | Display station | Screen |
+|---|---|---|
+| `ibm3179-2` | IBM 3179 model 2 (colour) | 24×80 |
+| `ibm5251-11` | IBM 5251 model 11 (green screen) | 24×80 |
+| `ibm3477-fc` | IBM 3477 model FC (colour, wide) | 24×80 and 27×132 |
+
+`ibm3179-2` suits most systems. Use `ibm3477-fc` for programs that show
+132-column screens; the window switches size when the host asks. Port 23
+is the default; tick **Use TLS** for port 992 (secure Telnet on IBM i), with
+the same certificate checking and `tls_ca_file` site setting as TN3270.
+The character set defaults to EBCDIC code page 037; set e.g. `cp500`,
+`cp273` or `cp1140` under Terminal › Character set if the system uses
+another.
+
+**Device name.** IBM i normally gives each connection a new virtual device
+(`QPADEV0001`, ...). To pin a workstation to a fixed device, so that it gets
+the same job, output queue or subsystem routing each time, fill in **Device
+name** on the Connection tab (shown for 5250 emulations only): up to 10
+characters, A-Z, 0-9, `@ # $ _`. In a profile file it is
+`device_name = "SHOP01"`. It is sent as the NEW-ENVIRON `DEVNAME` variable
+(RFC 4777). The device is created on IBM i if the system value QAUTOVRT
+allows it. No user name or password is ever sent this way; you always sign
+on at the sign-on screen.
+
+Typing edits the screen locally and the AID keys send it. Typing a wrong
+character (a letter in a numeric field, outside an input field) inhibits
+the keyboard as on a real 5250: the status bar shows `X II` and the reason,
+and **Reset** (Escape) clears it. Error messages from the host appear on
+the error line and also need Reset. The default keyboard (built-in keymap
+`ibm5250`):
+
+| Key | 5250 key | Key | 5250 key |
+|---|---|---|---|
+| Enter | Enter | Keypad Enter | Field Exit |
+| Keypad + | Field+ | Keypad − | Field− (negative number) |
+| F1-F12 | F1-F12 | Shift+F1-F12 | F13-F24 |
+| PageUp | Roll Down (previous page) | PageDown | Roll Up (next page) |
+| Escape | Reset | Shift+Escape, Pause | Attention |
+| SysReq (Alt+Print) | System Request | Ctrl+Pause | Clear |
+| Ctrl+F1 | Help | Ctrl+D | Dup |
+| Tab / Shift+Tab | Next / previous field | Home | First input field |
+| End | End of field | Insert | Insert mode |
+| Backspace | Erase left | Delete | Delete |
+| Ctrl+End | Erase to end of field | Ctrl+Delete | Erase Input |
+| Shift+Enter | New line | Ctrl+Print | Print (host print key) |
+
+The Print key itself prints the screen locally, as for every session.
+Any key can be remapped with `action:` and one of `enter`, `f1`-`f24`,
+`field-exit`, `field-plus`, `field-minus`, `reset`, `attn`, `sysreq`,
+`help`, `roll-up`, `roll-down`, `clear`, `print`, `record-backspace`,
+`dup`, `field-mark`, `tab`, `backtab`, `home`, `newline`, `up`, `down`,
+`left`, `right`, `field-end`, `insert`, `erase`, `delete`, `erase-eof`,
+`erase-input`. Some PC 5250 users prefer Enter as Field Exit; put
+`Enter = "action:field-exit"` and e.g. `KeypadEnter = "action:enter"` in
+the session's key overrides, or in a keymap file with
+`inherit = "ibm5250"` to share it.
+
+The status bar shows the 5250 operator information: `X SYSTEM` while the
+host has the keyboard locked, `X II` and a reason when input is inhibited,
+`Insert`, `Message waiting`, and the cursor's row/column. Password
+(non-display) fields are never drawn, so they cannot be copied, searched or
+printed.
+
+Not yet supported for 5250: 5250 printer sessions, windows and pull-down
+menus drawn with structured fields (their text still shows), column
+separator lines, and the SysReq input line (SysReq goes straight to the
+host, which shows its System Request menu).
 
 ## Idle timeout, keep-alive and reconnecting
 

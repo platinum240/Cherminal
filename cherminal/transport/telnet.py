@@ -1,8 +1,10 @@
-"""Telnet client (RFC 854) with BINARY, ECHO, SGA, TTYPE, NAWS and EOR options.
+"""Telnet client (RFC 854) with BINARY, ECHO, SGA, TTYPE, NAWS, EOR and NEW-ENVIRON.
 
-In TN3270 mode (RFC 1576) the session is binary both ways and framed in
-records: incoming data keeps 0xFF doubled and each IAC EOR, so the 3270
-emulation can find record boundaries, and each write is sent as one record.
+In record mode, for TN3270 (RFC 1576) and TN5250 (RFC 1205), the session is
+binary both ways and framed in records: incoming data keeps 0xFF doubled and
+each IAC EOR, so the emulation can find record boundaries, and each write is
+sent as one record. For TN5250 a workstation device name can be given; it is
+sent as the NEW-ENVIRON (RFC 1572) user variable DEVNAME (RFC 4777).
 
 ``TelnetProtocol`` is the pure option-negotiation state machine, kept
 separate from sockets so it can be tested directly.
@@ -19,8 +21,10 @@ from .base import Transport, tcp_keepalive
 
 IAC, DONT, DO, WONT, WILL, SB, SE = 255, 254, 253, 252, 251, 250, 240
 NOP, BRK, AYT, GA, EOR_CMD = 241, 243, 246, 249, 239
-BINARY, ECHO, SGA, TTYPE, EOR, NAWS = 0, 1, 3, 24, 25, 31
+BINARY, ECHO, SGA, TTYPE, EOR, NAWS, NEW_ENVIRON = 0, 1, 3, 24, 25, 31, 39
 TTYPE_IS, TTYPE_SEND = 0, 1
+ENV_IS, ENV_SEND = 0, 1
+ENV_VAR, ENV_VALUE, ENV_ESC, ENV_USERVAR = 0, 1, 2, 3
 
 WE_SUPPORT = {BINARY, SGA, TTYPE, NAWS}     # options we will enable locally
 THEY_MAY = {BINARY, ECHO, SGA}              # options the server may enable
@@ -34,11 +38,15 @@ _DATA, _IAC, _VERB, _SB, _SB_IAC, _CR = range(6)
 
 class TelnetProtocol:
     def __init__(self, send: Callable[[bytes], None], term_type: str = "VT220",
-                 cols: int = 80, rows: int = 24, tn3270: bool = False):
+                 cols: int = 80, rows: int = 24, tn3270: bool = False,
+                 device_name: str = ""):
         self.send = send
         self.term_type = term_type
-        self.tn3270 = tn3270
+        self.tn3270 = tn3270            # record mode: TN3270 or TN5250
+        self.device_name = device_name
         self.we_support = WE_SUPPORT_3270 if tn3270 else WE_SUPPORT
+        if tn3270 and device_name:
+            self.we_support = self.we_support | {NEW_ENVIRON}
         self.they_may = THEY_MAY_3270 if tn3270 else THEY_MAY
         self.cols, self.rows = cols, rows
         self.local: set[int] = set()     # options enabled on our side (WILL acked)
@@ -56,8 +64,8 @@ class TelnetProtocol:
         """Offer the options a terminal client normally wants."""
         offers = ((WILL, TTYPE), (WILL, NAWS), (DO, SGA), (DO, ECHO))
         if self.tn3270:
-            # TN3270 hosts lead the negotiation, and some (Hercules) expect
-            # exact replies to their own requests, so offer nothing.
+            # TN3270/TN5250 hosts lead the negotiation, and some (Hercules)
+            # expect exact replies to their own requests, so offer nothing.
             offers = ()
         for verb, opt in offers:
             self._asked.add((verb, opt))
@@ -189,18 +197,37 @@ class TelnetProtocol:
         if len(sb) >= 2 and sb[0] == TTYPE and sb[1] == TTYPE_SEND:
             self.send(bytes([IAC, SB, TTYPE, TTYPE_IS]) + self.term_type.encode("ascii")
                       + bytes([IAC, SE]))
+        elif len(sb) >= 2 and sb[0] == NEW_ENVIRON and sb[1] == ENV_SEND \
+                and NEW_ENVIRON in self.local:
+            # Only the device name is sent: no user or password (no auto sign-on).
+            env = bytes([ENV_USERVAR]) + _env_escape(b"DEVNAME") + bytes([ENV_VALUE]) + \
+                _env_escape(self.device_name.encode("ascii"))
+            self.send(bytes([IAC, SB, NEW_ENVIRON, ENV_IS]) + env + bytes([IAC, SE]))
+
+
+def _env_escape(text: bytes) -> bytes:
+    """Escape NEW-ENVIRON control bytes (and double IAC) inside a name or value."""
+    out = bytearray()
+    for b in text:
+        if b in (ENV_VAR, ENV_VALUE, ENV_ESC, ENV_USERVAR):
+            out.append(ENV_ESC)
+        out.append(b)
+        if b == IAC:
+            out.append(IAC)
+    return bytes(out)
 
 
 class TelnetTransport(Transport):
     def __init__(self, host: str, port: int = 23, term_type: str = "VT220",
                  timeout: float = 15.0, tn3270: bool = False, tls: bool = False,
-                 tls_verify: bool = True, ca_file: str = ""):
+                 tls_verify: bool = True, ca_file: str = "", device_name: str = ""):
         super().__init__()
         self.host, self.port, self.timeout = host, port, timeout
         self.tls, self.tls_verify = tls, tls_verify
         self.ca_file = ca_file        # extra CA certificates (e.g. an in-house CA)
         self.sock: socket.socket | None = None
-        self.proto = TelnetProtocol(self._raw_send, term_type, tn3270=tn3270)
+        self.proto = TelnetProtocol(self._raw_send, term_type, tn3270=tn3270,
+                                    device_name=device_name)
 
     def _raw_send(self, data: bytes) -> None:
         if self.sock:

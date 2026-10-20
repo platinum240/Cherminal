@@ -89,6 +89,7 @@ class IBM3270(Emulation):
     term_type = "IBM-3278-2-E"
     telnet_type = "IBM-3278-2-E"
     keymap = "ibm3270"
+    family = "ibm3270"
     block_mode = True       # keys are edited locally and sent by attention keys
     fixed_size = True       # the host sets the grid; the window scales to it
     alternate = (80, 24)    # cols, rows for Erase/Write Alternate

@@ -30,6 +30,7 @@ def _make(profile, ask_password, confirm_host_key, ask_login) -> Transport:
         from .telnet import TelnetTransport
         return TelnetTransport(profile.host, profile.effective_port, term_type=emu.telnet_type,
                                tn3270=emu.block_mode, tls=profile.tls,
+                               device_name=profile.device_name if emu.family == "ibm5250" else "",
                                tls_verify=profile.tls_verify,
                                ca_file=policy.current().tls_ca_file)
     if profile.transport == "ssh":

@@ -230,6 +230,36 @@ def _ibm3270() -> dict[str, str]:
     return m
 
 
+def _ibm5250() -> dict[str, str]:
+    """PC-style layout for a 5250 keyboard.
+
+    Enter is Enter, as users expect; keypad Enter is Field Exit and keypad
+    +/- are Field+/Field-. Escape is Reset, as in the 3270 keymap (operator
+    errors need it often); Shift+Escape and Pause are Attention; SysReq
+    (Alt+Print) is System Request. PageUp/PageDown roll the screen.
+    """
+    m = {
+        "Enter": "action:enter", "KeypadEnter": "action:field-exit",
+        "Shift+Enter": "action:newline", "Tab": "action:tab", "Shift+Tab": "action:backtab",
+        "Up": "action:up", "Down": "action:down", "Left": "action:left",
+        "Right": "action:right", "Home": "action:home", "End": "action:field-end",
+        "Backspace": "action:erase", "Delete": "action:delete", "Insert": "action:insert",
+        "Ctrl+End": "action:erase-eof", "Ctrl+Delete": "action:erase-input",
+        "KeypadPlus": "action:field-plus", "KeypadMinus": "action:field-minus",
+        "Escape": "action:reset", "Shift+Escape": "action:attn", "Pause": "action:attn",
+        "SysReq": "action:sysreq", "Alt+Print": "action:sysreq",
+        "Ctrl+Pause": "action:clear", "Ctrl+F1": "action:help", "Ctrl+D": "action:dup",
+        "Ctrl+Print": "action:print",
+        "PageUp": "action:roll-down", "PageDown": "action:roll-up",
+    }
+    for i in range(1, 13):
+        m[f"F{i}"] = f"action:f{i}"
+        m[f"Shift+F{i}"] = f"action:f{i + 12}"
+    for i in range(13, 25):
+        m[f"F{i}"] = f"action:f{i}"
+    return m
+
+
 COMMON = {
     "Ctrl+Shift+C": "action:copy",
     "Ctrl+Shift+V": "action:paste",
@@ -242,7 +272,7 @@ COMMON = {
 
 BUILTIN: dict[str, dict[str, str]] = {
     "vt100": _vt100(), "vt220": _vt220(), "xterm": _xterm(), "linux": _linux(),
-    "ansi": _ansi(), "wyse": _wyse(), "ibm3270": _ibm3270(),
+    "ansi": _ansi(), "wyse": _wyse(), "ibm3270": _ibm3270(), "ibm5250": _ibm5250(),
 }
 
 
