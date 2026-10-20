@@ -45,6 +45,7 @@ it `UNVERIFIED` so it can be checked against real hardware or a manual.
 | Saved configs | Named session profiles, one TOML file each, under `$XDG_CONFIG_HOME/cherminal` | Done |
 | UI | Tabbed sessions, session manager, quick connect, copy/paste, scrollback, colours | Done (PyQt6) |
 | Telnet options | BINARY, ECHO, SGA, TTYPE, NAWS | Done |
+| Site policy | Admin-enforced `/etc/cherminal/policy.toml`: limited mode, allowed transports, upload, print to file, optional TLS / certificate checks, extra CA | Done |
 | Macros | Named byte strings bound to keys or a menu | Done |
 | File transfer | XMODEM, YMODEM, ZMODEM, Kermit | Later phase |
 | Printing | Transparent / pass-through print (`CSI 5i`/`CSI 4i`, Wyse `ESC d#`) to a file or `lp` | Later phase |

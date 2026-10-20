@@ -205,14 +205,14 @@ class Screen:
         self.dirty = True
 
     def tab(self, n: int = 1) -> None:
-        for _ in range(n):
+        for _ in range(min(n, self.cols)):
             nxt = [t for t in self.tabstops if t > self.x]
             self.x = min(nxt) if nxt else self.cols - 1
         self.wrap_pending = False
         self.dirty = True
 
     def back_tab(self, n: int = 1) -> None:
-        for _ in range(n):
+        for _ in range(min(n, self.cols)):
             prev = [t for t in self.tabstops if t < self.x]
             self.x = max(prev) if prev else 0
         self.wrap_pending = False

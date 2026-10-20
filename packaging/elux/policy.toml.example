@@ -1,0 +1,32 @@
+# Cherminal site policy. Copy to /etc/cherminal/policy.toml (owned by root,
+# readable by everyone) and keep only the lines you need. Every setting is
+# optional; leaving one out keeps Cherminal's normal behaviour.
+#
+# Check a file before deploying it:   cherminal --check-policy policy.toml
+# A policy file with a mistake in it stops Cherminal from starting, so a
+# typo can never leave clients running without the restrictions.
+
+# Always run in limited mode, as if started with --limited: the File menu
+# offers only Close tab and Exit, and users can't edit sessions, make new
+# connections, open a local shell, pick files to upload or print to a file.
+# limited = true
+
+# The kinds of connection users may open: ssh, telnet, serial, local.
+# allowed_transports = ["telnet", "ssh"]
+
+# SFTP upload (drag and drop) even in sessions that turn it on.
+# file_upload = false
+
+# Print screen to a PDF file instead of a printer.
+# print_to_file = false
+
+# Telnet and TN3270 only over TLS. Off by default: some mainframes don't offer it.
+# require_tls = false
+
+# TLS sessions must check the host's certificate (users can't untick
+# "Check the host's certificate"). Off by default.
+# require_tls_verify = false
+
+# Extra CA certificates (PEM) to trust for TLS, such as an in-house CA that
+# signs the mainframes' certificates, so checking can stay on.
+# tls_ca_file = "/etc/cherminal/ca.pem"

@@ -8,7 +8,7 @@ from datetime import datetime
 
 from PyQt6.QtCore import QRectF, Qt
 from PyQt6.QtGui import QFont, QFontMetricsF, QPainter, QPageLayout
-from PyQt6.QtPrintSupport import QPrintDialog, QPrinter, QPrinterInfo
+from PyQt6.QtPrintSupport import QAbstractPrintDialog, QPrintDialog, QPrinter, QPrinterInfo
 from PyQt6.QtWidgets import QMessageBox
 
 
@@ -69,15 +69,30 @@ def render(printer: QPrinter, lines: list[str], title: str, family: str) -> None
         p.end()
 
 
-def print_screen(term, parent=None) -> bool:
+def to_file(printer: QPrinter) -> bool:
+    """True if the printer writes a file (PDF) rather than going to a printer."""
+    return (printer.outputFormat() != QPrinter.OutputFormat.NativeFormat
+            or bool(printer.outputFileName()))
+
+
+def print_screen(term, parent=None, allow_file: bool = True) -> bool:
     """Print what is on the screen. With a printer set in the session, print
-    straight to it; otherwise ask, which also offers printing to a PDF file."""
+    straight to it; otherwise ask, which also offers printing to a PDF file
+    unless ``allow_file`` is off (limited mode, or the site policy)."""
     profile = term.session.profile
     printer = make_printer(profile.printer)
-    if not profile.printer or not printer.isValid():
+    if not profile.printer or not printer.isValid() or (to_file(printer) and not allow_file):
+        if not allow_file and not printer_names():
+            QMessageBox.warning(parent, "Print screen", "No printer is set up on this computer.")
+            return False
         dlg = QPrintDialog(printer, parent)
         dlg.setWindowTitle("Print screen")
+        dlg.setOption(QAbstractPrintDialog.PrintDialogOption.PrintToFile, allow_file)
         if not dlg.exec():
+            return False
+        if to_file(printer) and not allow_file:
+            QMessageBox.warning(parent, "Print screen",
+                                "Printing to a file is not allowed on this computer.")
             return False
     render(printer, screen_lines(term), profile.name, profile.font_family or "Monospace")
     return True
@@ -103,7 +118,7 @@ def print_raw(data: bytes, printer_name: str, parent=None) -> str:
             return "Print job failed"
     # No CUPS command line: print the job as plain text through Qt instead.
     printer = make_printer(printer_name)
-    if not printer.isValid():
+    if not printer.isValid() or to_file(printer):
         QMessageBox.warning(parent, "Print", "The host sent a print job, but no printer "
                                              "is set up on this machine.")
         return "Print job dropped: no printer"

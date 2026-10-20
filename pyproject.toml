@@ -7,6 +7,7 @@ name = "cherminal"
 dynamic = ["version"]
 description = "Terminal emulator for host connections on Linux: legacy emulations, real key mapping, saved sessions"
 readme = "README.md"
+license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
 dependencies = [
     "PyQt6>=6.5",
@@ -21,6 +22,9 @@ dev = ["pytest>=7"]
 [project.scripts]
 cherminal = "cherminal.__main__:main"
 cherminal-keycapture = "cherminal.tools.keycapture:main"
+
+[tool.setuptools]
+license-files = ["LICENSE"]
 
 [tool.setuptools.dynamic]
 version = { attr = "cherminal.__version__" }

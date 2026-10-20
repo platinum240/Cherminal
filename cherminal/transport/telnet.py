@@ -24,6 +24,7 @@ TTYPE_IS, TTYPE_SEND = 0, 1
 
 WE_SUPPORT = {BINARY, SGA, TTYPE, NAWS}     # options we will enable locally
 THEY_MAY = {BINARY, ECHO, SGA}              # options the server may enable
+MAX_SUBNEGOTIATION = 4096                   # bytes of one IAC SB ... IAC SE kept
 # TN3270: no NAWS (the screen size comes from the terminal type).
 WE_SUPPORT_3270 = {BINARY, SGA, TTYPE, EOR}
 THEY_MAY_3270 = {BINARY, SGA, EOR}
@@ -137,8 +138,8 @@ class TelnetProtocol:
             elif st == _SB:
                 if b == IAC:
                     self._state = _SB_IAC
-                else:
-                    self._sb.append(b)
+                elif len(self._sb) < MAX_SUBNEGOTIATION:
+                    self._sb.append(b)      # past the limit the rest is dropped
             elif st == _SB_IAC:
                 if b == SE:
                     self._subnegotiation(bytes(self._sb))
@@ -193,10 +194,11 @@ class TelnetProtocol:
 class TelnetTransport(Transport):
     def __init__(self, host: str, port: int = 23, term_type: str = "VT220",
                  timeout: float = 15.0, tn3270: bool = False, tls: bool = False,
-                 tls_verify: bool = True):
+                 tls_verify: bool = True, ca_file: str = ""):
         super().__init__()
         self.host, self.port, self.timeout = host, port, timeout
         self.tls, self.tls_verify = tls, tls_verify
+        self.ca_file = ca_file        # extra CA certificates (e.g. an in-house CA)
         self.sock: socket.socket | None = None
         self.proto = TelnetProtocol(self._raw_send, term_type, tn3270=tn3270)
 
@@ -205,13 +207,18 @@ class TelnetTransport(Transport):
             self.sock.sendall(data)
 
     def _open(self) -> None:
-        sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        ctx = None
         if self.tls:
             ctx = ssl.create_default_context()
+            if self.ca_file:
+                # An in-house CA, so its mainframes can be checked rather than
+                # having to turn checking off.
+                ctx.load_verify_locations(cafile=self.ca_file)
             if not self.tls_verify:
-                # Many mainframes use certificates from an in-house CA.
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
+        sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        if ctx:
             try:
                 sock = ctx.wrap_socket(sock, server_hostname=self.host)
             except (OSError, ssl.SSLError):
