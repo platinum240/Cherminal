@@ -349,8 +349,8 @@ Then choose:
 
 - **Direction:** send to the host (PUT) or receive from it (GET).
 - **Host system:** TSO, CICS or VM/CMS, which changes the command's syntax.
-- **Host file:** a TSO data set such as `'CHAD.REPORT.TEXT'` or
-  `'CHAD.JCL(PAYROLL)'`, a CICS file name such as `PAYROLL`, or a CMS file
+- **Host file:** a TSO data set such as `'username.REPORT.TEXT'` or
+  `'username.JCL(PAYROLL)'`, a CICS file name such as `PAYROLL`, or a CMS file
   such as `PROFILE EXEC A`.
 - **Local file**, **Text** (EBCDIC translated with the session's character
   set; local files are UTF-8) or **Binary** (bytes unchanged), **CRLF**
@@ -361,8 +361,8 @@ Then choose:
 The dialog shows the command it will type, for example:
 
 ```text
-IND$FILE GET 'CHAD.REPORT.TEXT' ASCII CRLF                         (TSO)
-IND$FILE PUT 'CHAD.DATA' ASCII CRLF RECFM(V) LRECL(255) SPACE(5,5) TRACKS
+IND$FILE GET 'username.REPORT.TEXT' ASCII CRLF                         (TSO)
+IND$FILE PUT 'username.DATA' ASCII CRLF RECFM(V) LRECL(255) SPACE(5,5) TRACKS
 IND$FILE PUT PAYROLL (BINARY NOCRLF                                (CICS)
 IND$FILE PUT PROFILE EXEC A (ASCII CRLF RECFM V LRECL 80           (CMS)
 ```
@@ -555,7 +555,7 @@ ssh_known_hosts_only = true       # SSH only to hosts whose keys you provided
 With `audit_log = true` each connection, disconnection and failed
 connection is written to syslog (journald) as one line with the user,
 session, host, what happened and how long it lasted, for example
-`user=chad session='Payroll' transport=telnet host=mf1:23 event=disconnected
+`user=username session='Payroll' transport=telnet host=mf1:23 event=disconnected
 detail='closed by the user; after 0h42m10s'`. Nothing typed or shown in a
 session is ever in it. Read it with `journalctl -t cherminal`.
 
