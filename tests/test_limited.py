@@ -6,6 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 QtWidgets = pytest.importorskip("PyQt6.QtWidgets")
 
 from cherminal import __main__ as cli  # noqa: E402
+from cherminal import system  # noqa: E402
 from cherminal.config import ProfileStore, SessionProfile  # noqa: E402
 
 
@@ -26,7 +27,8 @@ def all_shortcuts(win):
             for a in m.menu().actions() if not a.shortcut().isEmpty()}
 
 
-def test_limited_file_menu(app, tmp_path):
+def test_limited_file_menu(app, tmp_path, monkeypatch):
+    monkeypatch.setattr(system, "IS_MAC", False)       # Linux shortcuts (Mac: test_macos)
     from cherminal.gui.app import MainWindow
     store = ProfileStore(tmp_path, site_roots=[])
     full = MainWindow(store)

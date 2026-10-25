@@ -29,9 +29,9 @@ MAC_SHORTCUTS = {"Ctrl+Shift+O": "Ctrl+O", "Ctrl+Shift+N": "Ctrl+N", "Ctrl+Shift
                  "Ctrl+Shift+P": "Ctrl+P", "mac:copy": "Ctrl+C", "mac:paste": "Ctrl+V"}
 
 
-def menu_shortcut(key: str, mac: bool = system.IS_MAC) -> str:
+def menu_shortcut(key: str, mac: bool | None = None) -> str:
     """A menu shortcut for this platform; ``mac:`` ones exist only on macOS."""
-    if mac:
+    if system.IS_MAC if mac is None else mac:
         return MAC_SHORTCUTS.get(key, key)
     return "" if key.startswith("mac:") else key
 

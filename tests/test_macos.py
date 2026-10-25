@@ -246,3 +246,17 @@ def test_option_key_is_taken_before_macos_composes(monkeypatch, tmp_path):
     term.keyPressEvent(QtGui.QKeyEvent(QEvent.Type.KeyPress, K.Key_B, M.AltModifier, 0, 0,
                                        RIGHT_OPTION, "∫"))
     assert keys == [("Alt+B", "b")]
+
+
+def test_mac_menu_shortcuts_in_the_window(monkeypatch, tmp_path):
+    from PyQt6.QtWidgets import QApplication
+
+    from cherminal.config import ProfileStore
+    from cherminal.gui.app import MainWindow
+    app = QApplication.instance() or QApplication([])  # noqa: F841 (kept alive)
+    monkeypatch.setattr(system, "IS_MAC", True)
+    win = MainWindow(ProfileStore(tmp_path, site_roots=[]))
+    keys = {a.text().replace("&", ""): a.shortcut().toString()
+            for m in win.menuBar().actions() for a in m.menu().actions() if a.text()}
+    assert keys["Close tab"] == "Ctrl+W" and keys["Copy"] == "Ctrl+C"   # Cmd on a Mac
+    assert keys["Print screen…"] == "Ctrl+P"

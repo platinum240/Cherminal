@@ -1,8 +1,9 @@
 from cherminal import __main__ as cli
-from cherminal import desktop
+from cherminal import desktop, system
 
 
 def test_install_desktop_entry(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(system, "IS_MAC", False)       # a Linux desktop
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "share"))
     monkeypatch.setenv("XDG_DATA_DIRS", str(tmp_path / "system"))
     monkeypatch.setenv("APPIMAGE", "/opt/apps/Cherminal 0.8.AppImage")
