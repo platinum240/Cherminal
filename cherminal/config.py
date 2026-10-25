@@ -1,6 +1,7 @@
 """Saved session profiles and keymap files.
 
-Everything lives under ``$XDG_CONFIG_HOME/cherminal`` (``~/.config/cherminal``):
+Everything lives under ``$XDG_CONFIG_HOME/cherminal`` (``~/.config/cherminal``;
+``~/Library/Application Support/Cherminal`` on macOS, see ``system``):
 
 * ``sessions/<slug>.toml`` - one profile per file
 * ``keymaps/<name>.toml``  - reusable keymaps (``inherit`` + ``[keys]``)
@@ -17,11 +18,12 @@ from pathlib import Path
 
 import tomli_w
 
-from . import emulation
+from . import emulation, system
 from .keymap import BUILTIN, Keymap
 
 TRANSPORTS = ("ssh", "telnet", "serial", "local")
 DEFAULT_PORTS = {"ssh": 22, "telnet": 23}
+OPTION_KEYS = ("alt", "left-alt", "text")
 
 
 PALETTE_NAMES = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
@@ -36,8 +38,7 @@ def _check_hex(value: str) -> None:
 
 
 def config_dir() -> Path:
-    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
-    return Path(base) / "cherminal"
+    return system.config_dir()
 
 
 def slugify(name: str) -> str:
@@ -82,6 +83,7 @@ class SessionProfile:
     palette: dict[str, str] = field(default_factory=dict)   # e.g. blue = "#6fa8ff"
     keymap: str = ""                  # "" = emulation's built-in keymap
     backspace: str = ""               # "" | "del" | "bs"
+    option_key: str = "left-alt"      # macOS Option: alt | left-alt | text (types characters)
     answerback: str = ""
     local_echo: bool = False
     enter_sends: str = "cr"           # cr | crlf | lf
@@ -106,6 +108,8 @@ class SessionProfile:
             raise ValueError(f"unknown emulation {self.emulation!r}")
         if self.backspace not in ("", "del", "bs"):
             raise ValueError("backspace must be 'del' or 'bs'")
+        if self.option_key not in OPTION_KEYS:
+            raise ValueError(f"option_key must be one of {', '.join(OPTION_KEYS)}")
         if self.enter_sends not in ("cr", "crlf", "lf"):
             raise ValueError("enter_sends must be cr, crlf or lf")
         self.lu_name = self.lu_name.strip().upper()
@@ -177,14 +181,13 @@ def site_dirs() -> list[Path]:
 
     * ``$CHERMINAL_SITE_DIR`` - one or more folders (``:``-separated), e.g. a share
     * ``cherminal-config/`` next to the AppImage, so a copied folder travels with it
-    * ``cherminal/`` in each ``$XDG_CONFIG_DIRS`` folder (default ``/etc/xdg``)
+    * ``cherminal/`` in each ``$XDG_CONFIG_DIRS`` folder (default ``/etc/xdg``;
+      on macOS ``/Library/Application Support/Cherminal``)
     """
     dirs = [Path(d) for d in os.environ.get("CHERMINAL_SITE_DIR", "").split(":") if d]
     if os.environ.get("APPIMAGE"):
         dirs.append(Path(os.environ["APPIMAGE"]).parent / "cherminal-config")
-    xdg = os.environ.get("XDG_CONFIG_DIRS") or "/etc/xdg"
-    dirs += [Path(d) / "cherminal" for d in xdg.split(":") if d]
-    return dirs
+    return dirs + system.site_config_dirs()
 
 
 def read_bundle(path: Path) -> tuple[list[SessionProfile], dict[str, dict]]:

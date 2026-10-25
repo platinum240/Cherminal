@@ -6,14 +6,14 @@ from dataclasses import replace
 
 from PyQt6.QtCore import QRegularExpression, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QKeyEvent, QPainter, QRegularExpressionValidator
-from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox,
-                             QFileDialog, QFontComboBox, QFormLayout, QGridLayout, QHBoxLayout,
-                             QHeaderView, QLabel,
+from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QCompleter, QDialog,
+                             QDialogButtonBox, QFileDialog, QFontComboBox, QFormLayout,
+                             QGridLayout, QHBoxLayout, QHeaderView, QLabel,
                              QLineEdit, QListWidget, QListWidgetItem, QMessageBox, QPushButton,
                              QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout,
                              QWidget)
 
-from .. import emulation, policy
+from .. import emulation, policy, system
 from ..config import BUNDLE_SUFFIX, TRANSPORTS, ProfileStore, SessionProfile
 from ..keymap import Binding, normalize_key
 from .colors import (PALETTE_NAMES, SCHEMES, contrast, ensure_contrast, palette_256,
@@ -51,6 +51,15 @@ class KeyCaptureDialog(QDialog):
             return
         self.key = named[0]
         self.accept()
+
+
+def serial_ports() -> list[str]:
+    """Serial devices pyserial can see (on macOS, the /dev/cu.* call-out ports)."""
+    try:
+        from serial.tools import list_ports
+        return sorted(p.device for p in list_ports.comports())
+    except Exception:              # no pyserial, or no permission to look
+        return []
 
 
 class _PairTable(QWidget):
@@ -175,7 +184,7 @@ class ColorPreview(QWidget):
             return
         p = QPainter(self)
         p.fillRect(self.rect(), QColor(*c.bg))
-        font = QFont("Monospace")
+        font = QFont(system.font_family(""))
         font.setStyleHint(QFont.StyleHint.TypeWriter)
         p.setFont(font)
         line = p.fontMetrics().height()
@@ -448,6 +457,11 @@ class SessionEditor(QDialog):
         ident_row.addWidget(browse)
         self.command = QLineEdit(placeholderText="default: your login shell")
         self.serial_device = QLineEdit()
+        ports = serial_ports()
+        self.serial_device.setCompleter(QCompleter(ports, self.serial_device))
+        self.serial_device.setToolTip("Serial ports on this computer: " + (", ".join(ports) or
+                                      "none found") + (". On a Mac they are named like "
+                                      "/dev/cu.usbserial-…" if system.IS_MAC else ""))
         self.baud = QComboBox(editable=True)
         self.baud.addItems([str(b) for b in BAUDS])
         self.data_bits = QComboBox()
@@ -528,6 +542,15 @@ class SessionEditor(QDialog):
             self.backspace.addItem(label, value)
         f.addRow("Keymap", self.keymap)
         f.addRow("Backspace sends", self.backspace)
+        self.option_key = QComboBox()
+        for label, value in (("Left Option is Alt, right Option types characters", "left-alt"),
+                             ("Both Option keys are Alt", "alt"),
+                             ("Option types characters (é, ü, ©…)", "text")):
+            self.option_key.addItem(label, value)
+        self.option_key.setToolTip("Alt bindings such as Alt+F1 (PA1) and Esc-prefixed "
+                                   "Meta keys need Option as Alt.")
+        if system.IS_MAC:
+            f.addRow("Option key", self.option_key)
         lay.addLayout(f)
         visual = QPushButton("Keyboard map…")
         visual.setToolTip("Remap keys by clicking them on a picture of the keyboard")
@@ -753,7 +776,7 @@ class SessionEditor(QDialog):
         self.cols.setValue(p.cols)
         self.rows.setValue(p.rows)
         self.scrollback.setValue(p.scrollback)
-        self.font_family.setCurrentFont(QFont(p.font_family))
+        self.font_family.setCurrentFont(QFont(system.font_family(p.font_family)))
         self.font_size.setValue(p.font_size)
         self.colours.load(p)
         self.answerback.setText(p.answerback)
@@ -763,6 +786,7 @@ class SessionEditor(QDialog):
         self.resize_mode.setCurrentIndex(max(0, self.resize_mode.findData(p.resize_mode)))
         self.keymap.setCurrentIndex(max(0, self.keymap.findData(p.keymap)))
         self.backspace.setCurrentIndex(max(0, self.backspace.findData(p.backspace)))
+        self.option_key.setCurrentIndex(max(0, self.option_key.findData(p.option_key)))
         idx = self.printer.findData(p.printer)
         if idx < 0 and p.printer:
             self.printer.addItem(p.printer, p.printer)
@@ -807,6 +831,7 @@ class SessionEditor(QDialog):
             font_family=self.font_family.currentFont().family(),
             font_size=self.font_size.value(), **self.colours.settings(),
             keymap=self.keymap.currentData(), backspace=self.backspace.currentData(),
+            option_key=self.option_key.currentData(),
             answerback=self.answerback.text(), local_echo=self.local_echo.isChecked(),
             hotspots=self.hotspots.isChecked(),
             enter_sends=self.enter_sends.currentText(),

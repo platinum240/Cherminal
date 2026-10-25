@@ -5,18 +5,34 @@ from __future__ import annotations
 import fcntl
 import os
 import pty
+import pwd
 import shlex
 import signal
 import struct
 import termios
 
+from .. import system
 from .base import Transport
+
+
+def login_shell() -> list[str]:
+    """The user's shell. Apps started from the macOS Finder or Dock may have
+    no $SHELL, and Mac terminals start it as a login shell so that
+    ~/.zprofile and the like are read."""
+    shell = os.environ.get("SHELL")
+    if not shell:
+        try:
+            shell = pwd.getpwuid(os.getuid()).pw_shell
+        except KeyError:
+            pass
+    shell = shell or "/bin/sh"
+    return [shell, "-l"] if system.IS_MAC else [shell]
 
 
 class LocalTransport(Transport):
     def __init__(self, command: str = "", term: str = "xterm"):
         super().__init__()
-        self.argv = shlex.split(command) if command else [os.environ.get("SHELL", "/bin/sh")]
+        self.argv = shlex.split(command) if command else login_shell()
         self.term = term
         self.pid = 0
         self.fd = -1

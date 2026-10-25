@@ -11,10 +11,12 @@
     cherminal --import site.cherminal
     cherminal --limited "Mainframe A"  locked down: File menu is Close tab / Exit only
     cherminal --install-desktop       add Cherminal to the desktop menu with its icon
-    cherminal --check-policy FILE     check a site policy file before deploying it
+    cherminal --check-policy FILE     check a site policy file (.toml or .plist) before deploying it
 
-An administrator's policy in /etc/cherminal/policy.toml (see cherminal.policy)
-applies to every start and cannot be turned off from the command line.
+An administrator's policy in /etc/cherminal/policy.toml (on macOS,
+/Library/Application Support/Cherminal/policy.toml or managed preferences;
+see cherminal.policy) applies to every start and cannot be turned off from
+the command line.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from . import __version__, emulation, policy
+from . import __version__, emulation, policy, system
 from .config import ProfileStore, SessionProfile
 
 
@@ -101,6 +103,10 @@ def main(argv: list[str] | None = None) -> int:
     rules = policy.current()
     limited = args.limited or rules.limited
     if args.install_desktop:
+        if system.IS_MAC:
+            print("cherminal: not needed on macOS; drag Cherminal.app to Applications instead",
+                  file=sys.stderr)
+            return 0
         from .desktop import install
         print(f"installed {install()}")
         return 0

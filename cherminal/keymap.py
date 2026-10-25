@@ -10,13 +10,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .system import IS_MAC
+
 MODIFIERS = ("Ctrl", "Alt", "Shift")
 
 NAMED_KEYS = (
     [f"F{i}" for i in range(1, 25)]
     + ["Up", "Down", "Left", "Right", "Home", "End", "PageUp", "PageDown",
        "Insert", "Delete", "Backspace", "Tab", "Enter", "Escape", "Space", "Break", "Pause",
-       "Print", "SysReq"]
+       "Print", "SysReq", "Clear"]
     + [f"Keypad{i}" for i in range(10)]
     + ["KeypadEnter", "KeypadPlus", "KeypadMinus", "KeypadMultiply",
        "KeypadDivide", "KeypadDecimal", "KeypadComma"]
@@ -270,6 +272,18 @@ COMMON = {
     "Print": "action:print-screen",
 }
 
+# Mac keyboards have no Insert (extended ones have Help there, which counts
+# as Insert), Pause, Print or SysReq key, and laptops have no keypad. On
+# macOS the IBM maps add these so every 3270 and 5250 function has a key;
+# fn+Return is keypad Enter (5250 Field Exit) on a laptop.
+MAC_EXTRA: dict[str, dict[str, str]] = {
+    "ibm3270": {"Clear": "action:clear", "Ctrl+Escape": "action:clear",
+                "Ctrl+I": "action:insert"},
+    "ibm5250": {"Clear": "action:clear", "Ctrl+Escape": "action:sysreq",
+                "Ctrl+I": "action:insert", "Ctrl+P": "action:print",
+                "Ctrl+=": "action:field-plus", "Ctrl+-": "action:field-minus"},
+}
+
 BUILTIN: dict[str, dict[str, str]] = {
     "vt100": _vt100(), "vt220": _vt220(), "xterm": _xterm(), "linux": _linux(),
     "ansi": _ansi(), "wyse": _wyse(), "ibm3270": _ibm3270(), "ibm5250": _ibm5250(),
@@ -297,11 +311,13 @@ class Keymap:
     bindings: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def builtin(cls, name: str) -> "Keymap":
+    def builtin(cls, name: str, mac: bool = IS_MAC) -> "Keymap":
         if name not in BUILTIN:
             raise ValueError(f"unknown built-in keymap {name!r}")
         km = cls(dict(COMMON))
         km.update(BUILTIN[name])
+        if mac:
+            km.update(MAC_EXTRA.get(name, {}))
         return km
 
     def update(self, overrides: dict[str, str]) -> None:

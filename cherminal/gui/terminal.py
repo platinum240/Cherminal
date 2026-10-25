@@ -7,19 +7,19 @@ import re
 import threading
 from dataclasses import replace
 
-from PyQt6.QtCore import QObject, QRect, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QObject, QRect, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (QClipboard, QColor, QCursor, QFont, QFontMetrics, QFontMetricsF,
                          QGuiApplication, QKeyEvent, QMouseEvent, QPainter, QWheelEvent)
 from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu,
                              QMessageBox, QProgressDialog, QWidget)
 
-from .. import policy
+from .. import policy, system
 from ..emulation.hotspots import hotspot_at
 from ..keymap import Binding
 from ..screen import Attr
 from ..session import Session
 from .colors import ensure_contrast, resolve
-from .keys import key_name
+from .keys import key_name, option_is_alt
 
 IDLE_CHECK_MS = 5000            # how often the idle timeout is checked
 IDLE_WARNING = 60               # seconds of warning before an idle disconnect
@@ -63,6 +63,7 @@ class TerminalWidget(QWidget):
         self.set_base_font(session.profile.font_family, session.profile.font_size)
 
         self.scroll_offset = 0                 # lines scrolled back into history
+        self._alt_key = None                   # macOS: Option+key handled early (see event)
         self.sel_start: tuple[int, int] | None = None   # (absolute line, col)
         self.sel_end: tuple[int, int] | None = None
         self._last_title = ""
@@ -128,7 +129,7 @@ class TerminalWidget(QWidget):
         self._apply_resize()
 
     def set_font(self, family: str, size: float) -> None:
-        font = QFont(family)
+        font = QFont(system.font_family(family))
         font.setPointSizeF(size)
         font.setStyleHint(QFont.StyleHint.TypeWriter)
         font.setFixedPitch(True)
@@ -336,12 +337,28 @@ class TerminalWidget(QWidget):
     def focusNextPrevChild(self, next: bool) -> bool:
         return False   # keep Tab for the host
 
+    def event(self, event) -> bool:
+        # macOS turns Option+letter into an accented character (or a dead key
+        # that waits for the next one) before keyPressEvent sees it. When
+        # Option is Alt, take the key at the shortcut stage, which comes first.
+        if (system.IS_MAC and event.type() == QEvent.Type.ShortcutOverride
+                and option_is_alt(event, self.session.profile.option_key)):
+            self._alt_key = (event.key(), event.timestamp())
+            self.keyPressEvent(event)
+            event.accept()
+            return True
+        return super().event(event)
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.type() == QEvent.Type.KeyPress and self._alt_key == (event.key(),
+                                                                       event.timestamp()):
+            self._alt_key = None
+            return                  # already handled as Option+key (see event)
         if self.ended and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.session.touch()
             self.reconnect_now()
             return
-        named = key_name(event)
+        named = key_name(event, self.session.profile.option_key, mac=system.IS_MAC)
         if named is None:
             return
         name, text = named
@@ -666,7 +683,8 @@ class TerminalWidget(QWidget):
             self.match = None
             self.sel_start = self.sel_end = self._cell_at(event.position())
             self.update()
-        elif event.button() == Qt.MouseButton.MiddleButton:
+        elif (event.button() == Qt.MouseButton.MiddleButton
+              and QGuiApplication.clipboard().supportsSelection()):
             self.paste(QClipboard.Mode.Selection)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
@@ -686,7 +704,8 @@ class TerminalWidget(QWidget):
             self._on_update()
             return
         text = self.selected_text()
-        if text:
+        # X11 and Wayland keep a primary selection for middle-click paste; macOS doesn't.
+        if text and QGuiApplication.clipboard().supportsSelection():
             QGuiApplication.clipboard().setText(text, QClipboard.Mode.Selection)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:

@@ -6,6 +6,13 @@ from Elux Scout). Unlike the site folders in ``config``, its location is
 fixed: no environment variable or command-line option can point Cherminal
 elsewhere, so a user cannot start it without the policy.
 
+On macOS the file is ``/Library/Application Support/Cherminal/policy.toml``,
+and the same settings can also come from managed preferences: a
+configuration profile from Jamf or another MDM for the preference domain
+``io.github.platinum240.cherminal``, which macOS writes to
+``/Library/Managed Preferences``. Settings there override the file's, and a
+profile for one user overrides one for the whole computer.
+
 Every setting is optional and the defaults change nothing, so an empty or
 missing file behaves exactly like no policy. A file that exists but cannot
 be read or has a mistake in it stops Cherminal from starting rather than
@@ -37,11 +44,16 @@ browser opens.
 
 from __future__ import annotations
 
+import getpass
+import plistlib
 import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
+from xml.parsers.expat import ExpatError
 
-POLICY_PATH = Path("/etc/cherminal/policy.toml")
+from . import system
+
+POLICY_PATH = system.policy_path()
 TRANSPORTS = ("ssh", "telnet", "serial", "local")
 LOGGING = ("allowed", "never", "always")
 
@@ -149,30 +161,71 @@ class Policy:
         return "\n".join(lines)
 
 
-def read(path: Path) -> Policy:
+def _read_data(path: Path) -> dict:
+    """The settings in a policy file: TOML, or a property list (XML or
+    binary) as macOS managed preferences are."""
     try:
-        with open(path, "rb") as f:
-            data = tomllib.load(f)
-    except tomllib.TOMLDecodeError as e:
-        raise PolicyError(f"{path}: {e}") from e
+        raw = path.read_bytes()
     except OSError as e:
         raise PolicyError(f"{path}: cannot read the policy ({e.strerror or e})") from e
+    plist = path.suffix == ".plist" or raw.lstrip().startswith((b"<?xml", b"bplist"))
+    try:
+        data = plistlib.loads(raw) if plist else tomllib.loads(raw.decode("utf-8"))
+    except (tomllib.TOMLDecodeError, plistlib.InvalidFileException, ExpatError,
+            ValueError) as e:
+        raise PolicyError(f"{path}: {e}") from e
+    if plist:
+        if not isinstance(data, dict):
+            raise PolicyError(f"{path}: the property list must be a dictionary of settings")
+        # Profiles may carry their own bookkeeping keys next to the settings.
+        data = {k: v for k, v in data.items() if not k.startswith("Payload")}
+    return data
+
+
+def read(path: Path) -> Policy:
+    data = _read_data(path)
     try:
         return Policy.from_dict(data, source=str(path))
     except PolicyError as e:
         raise PolicyError(f"{path}: {e}") from e
 
 
-def load(path: Path | None = None) -> Policy:
-    """The policy at ``path`` (default POLICY_PATH); no file means no restrictions."""
-    path = path or POLICY_PATH
+def managed_prefs_paths() -> list[Path]:
+    """macOS managed preferences that apply to this user (none on Linux)."""
+    try:
+        user = getpass.getuser()
+    except (KeyError, OSError):
+        user = ""
+    paths = system.managed_prefs_paths(user)
+    return paths if user else paths[:1]
+
+
+def _exists(path: Path) -> bool:
     try:
         path.stat()
     except FileNotFoundError:
-        return Policy()
+        return False
     except OSError as e:          # e.g. a folder users may not look in
         raise PolicyError(f"{path}: cannot read the policy ({e.strerror or e})") from e
-    return read(path)
+    return True
+
+
+def load(path: Path | None = None) -> Policy:
+    """The policy at ``path`` (default POLICY_PATH) with any macOS managed
+    preferences on top; no file and no preferences mean no restrictions."""
+    found = [p for p in [path or POLICY_PATH] + managed_prefs_paths() if _exists(p)]
+    if not found:
+        return Policy()
+    if len(found) == 1:
+        return read(found[0])
+    data: dict = {}
+    for p in found:
+        data.update(_read_data(p))
+    source = ", ".join(str(p) for p in found)
+    try:
+        return Policy.from_dict(data, source=source)
+    except PolicyError as e:
+        raise PolicyError(f"{source}: {e}") from e
 
 
 _current = Policy()

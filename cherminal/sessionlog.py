@@ -21,17 +21,17 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import policy
+from . import policy, system
 
 
 def log_dir() -> Path:
     """The site policy's ``log_dir`` (``%u`` = user name), else
-    ``$XDG_STATE_HOME/cherminal/logs`` (``~/.local/state/cherminal/logs``)."""
+    ``$XDG_STATE_HOME/cherminal/logs`` (``~/.local/state/cherminal/logs``;
+    ``~/Library/Logs/Cherminal`` on macOS)."""
     configured = policy.current().log_dir
     if configured:
         return Path(os.path.expanduser(configured.replace("%u", _user())))
-    base = os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state")
-    return Path(base) / "cherminal" / "logs"
+    return system.log_dir()
 
 
 def _user() -> str:

@@ -11,6 +11,8 @@ from PyQt6.QtGui import QFont, QFontMetricsF, QPainter, QPageLayout
 from PyQt6.QtPrintSupport import QAbstractPrintDialog, QPrintDialog, QPrinter, QPrinterInfo
 from PyQt6.QtWidgets import QMessageBox
 
+from .. import system
+
 
 def printer_names() -> list[str]:
     return list(QPrinterInfo.availablePrinterNames())
@@ -102,7 +104,7 @@ def print_screen(term, parent=None, allow_file: bool = True) -> bool:
             QMessageBox.warning(parent, "Print screen",
                                 "Printing to a file is not allowed on this computer.")
             return False
-    render(printer, screen_lines(term), profile.name, profile.font_family or "Monospace")
+    render(printer, screen_lines(term), profile.name, system.font_family(profile.font_family))
     return True
 
 
@@ -131,7 +133,7 @@ def print_raw(data: bytes, printer_name: str, parent=None) -> str:
                                              "is set up on this machine.")
         return "Print job dropped: no printer"
     text = data.decode("latin-1").replace("\r\n", "\n").replace("\r", "\n").replace("\f", "\n")
-    render(printer, text.split("\n"), "Host print job", "Monospace")
+    render(printer, text.split("\n"), "Host print job", system.font_family(""))
     return f"Printed a host print job on {printer.printerName()}"
 
 
@@ -154,5 +156,5 @@ def print_text(text: str, printer_name: str, title: str = "Host print job") -> s
     printer = make_printer(name)
     if not name or not printer.isValid() or to_file(printer):
         return "Print job dropped: no printer is set up on this machine"
-    render(printer, text.rstrip("\n").split("\n"), title, "Monospace")
+    render(printer, text.rstrip("\n").split("\n"), title, system.font_family(""))
     return f"Printed {title} on {printer.printerName()}"

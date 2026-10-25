@@ -17,8 +17,9 @@ def term():
 
 @pytest.fixture(autouse=True)
 def no_site_policy(monkeypatch, tmp_path_factory):
-    """Tests never pick up the machine's /etc/cherminal/policy.toml."""
+    """Tests never pick up the machine's policy file or managed preferences."""
     from cherminal import policy
     monkeypatch.setattr(policy, "POLICY_PATH", tmp_path_factory.mktemp("policy") / "policy.toml")
+    monkeypatch.setattr(policy, "managed_prefs_paths", lambda: [])
     yield
     policy.set_current(policy.Policy())

@@ -3,6 +3,26 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## Unreleased
+
+- macOS: Cherminal runs on Macs (macOS 12 and later, Apple Silicon and
+  Intel), built as `Cherminal.app` in a `.dmg` and a `.pkg` by
+  `packaging/build-macos.sh` and the new `macos` workflow. See
+  [docs/MACOS.md](docs/MACOS.md).
+- macOS keyboard: Control sends control codes, Command is for the menus
+  (⌘C, ⌘V, ⌘W, ...), and a per-session **Option key** setting makes the
+  left, both or neither Option key Alt. Help counts as Insert, and the 3270
+  and 5250 layouts get Mac keys for Clear, Insert, SysReq, Print and
+  Field+/− (Ctrl+Esc, Ctrl+I, ...).
+- macOS folders: `~/Library/Application Support/Cherminal`,
+  `~/Library/Logs/Cherminal` and `/Library/Application Support/Cherminal`
+  (shared setup and `policy.toml`); a `~/.config/cherminal` copied from
+  Linux is used as it is.
+- macOS site policy from managed preferences (Jamf and other MDMs), domain
+  `io.github.platinum240.cherminal`; `--check-policy` reads `.plist` files.
+- The local shell starts your login shell from your account when `$SHELL`
+  isn't set, and the session editor suggests the serial ports it finds.
+
 ## 0.10.0
 
 - IBM i: TN5250 with the IBM 3179-2, 5251-11 and 3477-FC display stations,
