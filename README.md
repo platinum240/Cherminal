@@ -7,17 +7,19 @@
 
 # Cherminal
 
-A terminal emulator for Linux in the spirit of Century Software's TinyTerm:
-for connecting to Unix hosts, line-of-business applications, network gear
-and serial devices that expect a *real* terminal (VT220, SCO ANSI, Wyse 60,
-TeleVideo...), with key mapping and saved sessions as first-class features.
+A terminal emulator for Linux and macOS in the spirit of Century Software's
+TinyTerm: for connecting to Unix hosts, line-of-business applications,
+network gear and serial devices that expect a *real* terminal (VT220, SCO
+ANSI, Wyse 60, TeleVideo...), with key mapping and saved sessions as
+first-class features.
 
 TinyTerm's own Linux edition (TinyTERM ITX Desktop) was discontinued in 2018
 and no longer runs on current distributions. Cherminal is a clean-room
 replacement; see [docs/SPEC.md](docs/SPEC.md) for the feature scope, the
 sources it was derived from, and the architecture.
 
-Guides: [administrator guide](docs/ADMIN.md) (installing, shared setup,
+Guides: [macOS](docs/MACOS.md) (keyboard, Jamf, signing),
+[administrator guide](docs/ADMIN.md) (installing, shared setup,
 site policy, certificates, host keys, logging, eLux rollout) and
 [user guide](docs/USER.md).
 
@@ -62,6 +64,14 @@ site policy, certificates, host keys, logging, eLux rollout) and
   carry an existing TinyTerm keyboard setup across.
 
 ## Install and run
+
+### On a Mac
+
+Download `Cherminal-<version>-macos-arm64.dmg` (Apple Silicon) or
+`-x86_64.dmg` (Intel) from a release and drag Cherminal to Applications,
+or deploy the `.pkg` with Jamf. See [docs/MACOS.md](docs/MACOS.md) for the
+Mac keyboard (Control, Command and Option), managed preferences, and
+building, signing and notarizing the app with `packaging/build-macos.sh`.
 
 ### On a workstation with no internet (AppImage)
 

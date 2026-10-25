@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cherminal"
 dynamic = ["version"]
-description = "Terminal emulator for host connections on Linux: legacy emulations, real key mapping, saved sessions"
+description = "Terminal emulator for host connections on Linux and macOS: legacy emulations, real key mapping, saved sessions"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"

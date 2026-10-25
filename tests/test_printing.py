@@ -99,8 +99,10 @@ def test_editor_printing_tab(app, tmp_path):
     assert SessionProfile().to_dict().get("printer") is None
 
 
-def test_print_menu_items(app, tmp_path):
+def test_print_menu_items(app, tmp_path, monkeypatch):
+    from cherminal import system
     from cherminal.gui.app import MainWindow
+    monkeypatch.setattr(system, "IS_MAC", False)       # Linux shortcuts (Mac: test_macos)
     win = MainWindow(ProfileStore(tmp_path, site_roots=[]), limited=True)
     session_menu = [a for a in win.menuBar().actions() if a.text() == "&Session"][0].menu()
     acts = {a.text(): a.shortcut().toString() for a in session_menu.actions()}

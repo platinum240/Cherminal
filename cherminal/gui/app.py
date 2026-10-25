@@ -10,7 +10,7 @@ from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (QApplication, QFontDialog, QLabel, QMainWindow, QMessageBox,
                              QTabWidget, QToolBar, QVBoxLayout, QWidget)
 
-from .. import __version__, policy
+from .. import __version__, policy, system
 from ..config import ProfileStore, SessionProfile
 from ..desktop import APP_ID, entry_installed
 from ..keymap import Binding
@@ -19,6 +19,21 @@ from .dialogs import SessionColoursDialog, SessionEditor, SessionManager
 from .icons import app_icon, logo
 from .search import SearchBar
 from .terminal import TerminalWidget
+
+
+# Ctrl+Shift shortcuts stay out of the way of host control keys. On macOS
+# Qt reads Ctrl in a shortcut as Command, which never reaches the host, so
+# the menus use the usual Mac keys there (Cmd+T, Cmd+W, Cmd+C...).
+MAC_SHORTCUTS = {"Ctrl+Shift+O": "Ctrl+O", "Ctrl+Shift+N": "Ctrl+N", "Ctrl+Shift+T": "Ctrl+T",
+                 "Ctrl+Shift+W": "Ctrl+W", "Ctrl+Shift+Q": "Ctrl+Q", "Ctrl+Shift+F": "Ctrl+F",
+                 "Ctrl+Shift+P": "Ctrl+P", "mac:copy": "Ctrl+C", "mac:paste": "Ctrl+V"}
+
+
+def menu_shortcut(key: str, mac: bool | None = None) -> str:
+    """A menu shortcut for this platform; ``mac:`` ones exist only on macOS."""
+    if system.IS_MAC if mac is None else mac:
+        return MAC_SHORTCUTS.get(key, key)
+    return "" if key.startswith("mac:") else key
 
 
 class MainWindow(QMainWindow):
@@ -52,9 +67,8 @@ class MainWindow(QMainWindow):
     def _action(self, menu, text, slot, shortcut=None):
         act = QAction(text, self)
         act.triggered.connect(slot)
-        if shortcut:
-            # Ctrl+Shift shortcuts stay out of the way of host control keys.
-            act.setShortcut(QKeySequence(shortcut))
+        if shortcut and (key := menu_shortcut(shortcut)):
+            act.setShortcut(QKeySequence(key))
         menu.addAction(act)
         return act
 
@@ -74,8 +88,8 @@ class MainWindow(QMainWindow):
                      "Ctrl+Shift+W")
         self._action(f, "E&xit", self.close, "Ctrl+Shift+Q")
         e = mb.addMenu("&Edit")
-        self._action(e, "&Copy", lambda: self._term() and self._term().copy())
-        self._action(e, "&Paste", lambda: self._term() and self._term().paste())
+        self._action(e, "&Copy", lambda: self._term() and self._term().copy(), "mac:copy")
+        self._action(e, "&Paste", lambda: self._term() and self._term().paste(), "mac:paste")
         e.addSeparator()
         self._action(e, "&Search…", self.open_search, "Ctrl+Shift+F")
         v = mb.addMenu("&View")
@@ -119,7 +133,8 @@ class MainWindow(QMainWindow):
         dark = self.palette().window().color().lightness() < 128
         box.setIconPixmap(logo(dark))
         box.setText(f"Cherminal {__version__}")
-        box.setInformativeText("Terminal emulation for host connections on Linux.")
+        box.setInformativeText("Terminal emulation for host connections on "
+                               f"{'macOS' if system.IS_MAC else 'Linux'}.")
         box.exec()
 
     # ------------------------------------------------------------ sessions

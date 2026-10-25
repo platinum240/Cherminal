@@ -3,6 +3,8 @@
 This guide is for the people who install Cherminal on workstations and thin
 clients, set up the sessions users connect with, and decide what users may
 change. For using Cherminal day to day, see the [user guide](USER.md).
+For Macs (folders, Jamf and managed preferences, signing), see
+[MACOS.md](MACOS.md); the rest of this guide applies to them too.
 
 - [1. What gets installed where](#1-what-gets-installed-where)
 - [2. Installing](#2-installing)
@@ -103,8 +105,10 @@ Every setting a session file can have is listed in the
 
 ## 4. The site policy
 
-The policy is one TOML file at `/etc/cherminal/policy.toml`, owned by root
-and readable by everyone. Cherminal reads only that path; no option or
+The policy is one TOML file at `/etc/cherminal/policy.toml` (on a Mac,
+`/Library/Application Support/Cherminal/policy.toml`, or a configuration
+profile: see [MACOS.md](MACOS.md#managing-cherminal-with-jamf-or-another-mdm)),
+owned by root and readable by everyone. Cherminal reads only that path; no option or
 environment variable points it elsewhere or turns it off. Every setting is
 optional, and a missing or empty file changes nothing.
 

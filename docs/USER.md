@@ -5,6 +5,11 @@ mainframes, IBM i, and serial devices. This guide covers everyday use. Your
 administrator may have set some things up for you, so some menus or
 settings below can be missing or greyed out; that is on purpose.
 
+On a Mac, the shortcuts below that use Ctrl+Shift are ⌘ instead (⌘O, ⌘N,
+⌘F, ⌘P, ⌘C, ⌘V), and the Control key is the host's Ctrl. See
+[Cherminal on macOS](MACOS.md#the-keyboard) for the Option key and the keys
+Mac keyboards don't have.
+
 ## Connecting
 
 - **Open a saved session:** File › Sessions… (Ctrl+Shift+O), pick one and
