@@ -60,6 +60,9 @@ RETRY_DELAYS = (2, 5, 10, 20, 30, 60)   # seconds between reconnect attempts
 MAX_RETRIES = 10
 MODERN_LINE_SPACING = 1.3       # Modern view: rows a little apart, so fields have room
 WHEEL_PAGE_MS = 600             # Modern view: at most one page per this long from the wheel
+MODERN_MARGIN = 6               # Modern view: the screen is a card this far in from the edges,
+MODERN_PADDING = 8              # with the text this far inside it,
+MODERN_RADIUS = 8               # and slightly rounded corners
 CLEAR_WAIT_MS = 10000           # a transaction waits this long for the host to answer Clear
 
 
@@ -125,7 +128,7 @@ class TerminalWidget(QWidget):
         # session while Modern view is on) and the command palette.
         self.trail = Trail()
         self.viewing: int | None = None             # the past screen shown, or None for live
-        self.palette: CommandPalette | None = None
+        self.command_palette: CommandPalette | None = None
         self.palette_extra = None                   # the window's own palette items
         session.keep_history = self.modern
         self._pending: tuple[str, float] | None = None  # a transaction waiting on Clear
@@ -200,7 +203,8 @@ class TerminalWidget(QWidget):
         self.resize_mode = mode
         if mode == "grow":
             self.set_font(self.base_family, self.base_size)
-            self.offset_x, self.offset_y = 0, self._top()
+            area = self._grid_area()
+            self.offset_x, self.offset_y = area.x(), area.y()
         self._apply_resize()
 
     def set_font(self, family: str, size: float) -> None:
@@ -412,13 +416,13 @@ class TerminalWidget(QWidget):
         self.message.emit(f"Table saved to {path}")
 
     def open_palette(self) -> None:
-        if self.palette is not None:
-            self.palette.field.setFocus()
+        if self.command_palette is not None:
+            self.command_palette.field.setFocus()
             return
         items = self.palette_items()
         if self.palette_extra is not None:
             items += self.palette_extra(self)
-        self.palette = CommandPalette(self, items)
+        self.command_palette = CommandPalette(self, items)
 
     def palette_items(self) -> list[Item]:
         """What this tab offers in the command palette; the window adds its own."""
@@ -506,17 +510,32 @@ class TerminalWidget(QWidget):
         """Height of the bar above the screen (Modern view), which the grid leaves free."""
         return self.nav.height() if self.modern else 0
 
+    def _card(self) -> QRectF:
+        """Modern view: the rounded card the screen sits on."""
+        m = MODERN_MARGIN
+        return QRectF(m, self._top() + m, self.width() - 2 * m, self.height() - self._top() - 2 * m)
+
+    def _grid_area(self) -> QRect:
+        """Where the character grid may go: the whole widget below the bar,
+        or in Modern view the inside of the card."""
+        if not self.modern:
+            top = self._top()
+            return QRect(0, top, self.width(), self.height() - top)
+        return self._card().toRect().adjusted(MODERN_PADDING, MODERN_PADDING,
+                                              -MODERN_PADDING, -MODERN_PADDING)
+
     def _apply_resize(self) -> None:
         top = self._top()
         self.nav.setGeometry(0, 0, self.width(), top)
-        if self.palette is not None:
-            self.palette._place()
+        if self.command_palette is not None:
+            self.command_palette._place()
         if self.resize_mode == "scale" or self.session.emulation.fixed_size:
             self._fit_font()
             return
-        self.offset_y = top
-        cols = max(2, self.width() // self.cw)
-        rows = max(2, (self.height() - top) // self.ch)
+        area = self._grid_area()
+        self.offset_x, self.offset_y = area.x(), area.y()
+        cols = max(2, area.width() // self.cw)
+        rows = max(2, area.height() // self.ch)
         s = self.session.screen
         if (cols, rows) != (s.cols, s.rows):
             self.session.resize(cols, rows)
@@ -526,24 +545,24 @@ class TerminalWidget(QWidget):
     def _fit_font(self) -> None:
         """Scale mode: keep the host's grid and size the font to fill the window."""
         s = self.session.screen
-        top = self._top()
-        height = self.height() - top
-        if self.width() < 10 or height < 10:
+        area = self._grid_area()
+        width, height = area.width(), area.height()
+        if width < 10 or height < 10:
             return
         ref = QFont(self.base_family)
         ref.setPointSizeF(100)
         ref.setStyleHint(QFont.StyleHint.TypeWriter)
         fm = QFontMetricsF(ref)
         w100, h100 = fm.horizontalAdvance("M"), fm.height() * self._line_spacing()
-        size = 100 * min(self.width() / (s.cols * w100), height / (s.rows * h100))
+        size = 100 * min(width / (s.cols * w100), height / (s.rows * h100))
         size = max(4.0, int(size * 2) / 2)          # half-point steps
         self.set_font(self.base_family, size)
         # Integer cell metrics can round up; step down until the grid fits.
-        while size > 4 and (self.cw * s.cols > self.width() or self.ch * s.rows > height):
+        while size > 4 and (self.cw * s.cols > width or self.ch * s.rows > height):
             size -= 0.5
             self.set_font(self.base_family, size)
-        self.offset_x = max(0, (self.width() - self.cw * s.cols) // 2)
-        self.offset_y = top + max(0, (height - self.ch * s.rows) // 2)
+        self.offset_x = area.x() + max(0, (width - self.cw * s.cols) // 2)
+        self.offset_y = area.y() + max(0, (height - self.ch * s.rows) // 2)
 
     # ---------------------------------------------------------- connection
 
@@ -1241,7 +1260,18 @@ class TerminalWidget(QWidget):
         sch = self.colors
         with self.session.lock:
             s = self.session.screen
-            p.fillRect(self.rect(), QColor(*(sch.fg if s.reverse_screen else sch.bg)))
+            screen_bg = QColor(*(sch.fg if s.reverse_screen else sch.bg))
+            if self.modern:
+                # A card with slightly rounded corners on the window's own colour.
+                p.fillRect(self.rect(), self.palette().window())
+                p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(screen_bg)
+                p.drawRoundedRect(self._card(), MODERN_RADIUS, MODERN_RADIUS)
+                p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+                p.setBrush(Qt.BrushStyle.NoBrush)
+            else:
+                p.fillRect(self.rect(), screen_bg)
             p.translate(self.offset_x, self.offset_y)
             lines = self._all_lines()
             history = len(lines) - s.rows if self.viewing is None else 0

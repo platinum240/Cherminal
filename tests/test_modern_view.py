@@ -166,12 +166,12 @@ def test_classic_unless_chosen(app, tmp_path):
 
 def test_set_modern_spaces_rows_and_paints_fields(app, tmp_path):
     term, _ = _term(tmp_path)
-    classic_ch = term.ch
+    classic_ratio = term.ch / term.cw
     term.set_modern(True)
     term._fit_font()
     assert term.modern
     assert term.ch > term.cw * 1.5 and term.ch * 24 <= term.height()
-    assert term.ch / term.cw > classic_ch / term.cw
+    assert term.ch / term.cw > classic_ratio                 # rows further apart
     term.grab()                                     # paints the field boxes without error
     term.set_modern(False)
     assert not term.modern
