@@ -851,6 +851,7 @@ class IBM3270(Emulation):
         if self.locked:
             self._refuse(self.lock_reason)
             return
+        self.on_aid()
         if aid == AID_CLEAR:
             self._erase(80, 24)
         self.aid = aid

@@ -888,6 +888,7 @@ class IBM5250(Emulation):
                     self.cursor = f.start
                     self._error("Mandatory fill field", f.start, "Fill this field completely")
                     return
+        self.on_aid()
         self._send_fields(aid, self.read_cmd)
         self.read_cmd = None
         self.locked, self.insert, self.message = True, False, ""

@@ -146,6 +146,35 @@ the tabs, gives a 3270 or 5250 screen a more familiar look:
 - The screen uses the **Graphite** (dark) or **Paper** (light) colours,
   following your desktop. Pick one, or keep the session's own colours,
   with Terminal › **Modern view colours** in the session.
+- A **breadcrumb** above the screen shows where you are, from the screens'
+  own titles: `Main menu › Customer list › Customer inquiry`. Going back
+  (F3, F12) shortens it. Click an earlier step to see that screen as you
+  left it.
+- **Screen history**: **History** on the breadcrumb bar (or View › Screen
+  history) shows the screens from this session, as they were when you
+  pressed Enter or a function key, so you can copy a value from three
+  screens ago without asking the host again. ‹ and › (or the arrow keys)
+  step through them; **Esc** goes back to the live screen. Past screens are
+  only for reading: keys never reach the host from there. History stays in
+  memory, never includes hidden fields such as passwords, and is gone when
+  the tab closes.
+
+**Command palette.** Press **Ctrl+K** (⌘K on a Mac) in a 3270 or 5250 tab,
+or **Go to…** on the breadcrumb bar, and type to find:
+
+- **Transactions** the session lists (File › Edit this session… ›
+  Keyboard & macros › Transactions, for example `CUST01` "Customer
+  inquiry"). On a 3270 choosing one presses Clear, waits for the host,
+  types the code and presses Enter; on a 5250 it types it on the screen's
+  command line and presses Enter.
+- the session's **macros**, the **keys** the screen lists (Exit, Cancel...),
+  **recent screens**, and actions such as Reconnect, Print screen, Send
+  file (IND$FILE) and switching view.
+
+**Copy and export.** Edit › **Copy screen text** copies the whole screen
+(live or past) as text. Edit › **Export table as CSV…** saves the table on
+the screen, such as a list of orders or jobs, as a CSV file for a
+spreadsheet. Hidden fields are never copied.
 
 Every key works the same in both views, and the host can't tell them
 apart. The switch changes the open tab; to start a session in Modern view

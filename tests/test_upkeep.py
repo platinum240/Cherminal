@@ -60,9 +60,12 @@ class Host:
             self.received += data
 
     def drop(self):
+        # The client can see its connection before the accept thread records it.
+        assert self.accepted.wait(5)
         reset(self.conns[-1])
 
     def logoff(self):
+        assert self.accepted.wait(5)
         self.conns[-1].shutdown(socket.SHUT_RDWR)
         self.conns[-1].close()
 

@@ -70,6 +70,9 @@ class Emulation:
         self.app_keypad = False
         self.bracketed_paste = False
         self.on_bell: Callable[[], None] = lambda: None
+        # Block mode: called just before Enter, a PF key or Clear sends the
+        # screen, while it still shows what the user saw (screen history).
+        self.on_aid: Callable[[], None] = lambda: None
         # Host-initiated print jobs (raw bytes for the local printer).
         self.on_print_data: Callable[[bytes], None] = lambda data: None
         self.printing = False

@@ -38,11 +38,21 @@ from .. import policy, system
 from ..emulation.choices import NONE as NO_CHOICES
 from ..emulation.choices import Choices, ListRow, MenuOption, find_choices
 from ..emulation.hotspots import ScreenKey, hotspot_at, screen_keys
+from ..emulation.navigation import (
+    Table,
+    Trail,
+    find_tables,
+    screen_text,
+    screen_title,
+    table_csv,
+)
 from ..keymap import Binding
 from ..screen import Attr
 from ..session import Session
 from .colors import ensure_contrast, modern_scheme, resolve
 from .keys import key_name, option_is_alt
+from .navbar import NavBar
+from .palette import CommandPalette, Item
 
 IDLE_CHECK_MS = 5000            # how often the idle timeout is checked
 IDLE_WARNING = 60               # seconds of warning before an idle disconnect
@@ -50,6 +60,7 @@ RETRY_DELAYS = (2, 5, 10, 20, 30, 60)   # seconds between reconnect attempts
 MAX_RETRIES = 10
 MODERN_LINE_SPACING = 1.3       # Modern view: rows a little apart, so fields have room
 WHEEL_PAGE_MS = 600             # Modern view: at most one page per this long from the wheel
+CLEAR_WAIT_MS = 10000           # a transaction waits this long for the host to answer Clear
 
 
 def _dark_desktop() -> bool:
@@ -110,6 +121,15 @@ class TerminalWidget(QWidget):
         self._swallow_release = False
         self._wheel = 0                             # wheel travel not yet turned into a page
         self._wheel_at = 0.0
+        # Modern view navigation: the breadcrumb, past screens (kept by the
+        # session while Modern view is on) and the command palette.
+        self.trail = Trail()
+        self.viewing: int | None = None             # the past screen shown, or None for live
+        self.palette: CommandPalette | None = None
+        self.palette_extra = None                   # the window's own palette items
+        session.keep_history = self.modern
+        self._pending: tuple[str, float] | None = None  # a transaction waiting on Clear
+        self.nav = NavBar(self)
         self.colors = self._resolve_colors()
         if self.can_be_modern:
             hints = QGuiApplication.styleHints()
@@ -180,7 +200,7 @@ class TerminalWidget(QWidget):
         self.resize_mode = mode
         if mode == "grow":
             self.set_font(self.base_family, self.base_size)
-            self.offset_x = self.offset_y = 0
+            self.offset_x, self.offset_y = 0, self._top()
         self._apply_resize()
 
     def set_font(self, family: str, size: float) -> None:
@@ -209,9 +229,12 @@ class TerminalWidget(QWidget):
         self.modern = on
         self.session.emulation.soft_errors = on
         self.session.emulation.field_error = None
+        self.session.keep_history = on
+        self.viewing = None
         self.setMouseTracking(self.hotspots or on)
         self._refresh_colors()
         self._update_choices()
+        self.nav.refresh()
         self.set_font(self.base_family, self.base_size)
         self._apply_resize()
         self.screen_changed.emit()
@@ -243,6 +266,8 @@ class TerminalWidget(QWidget):
             lines = [self._line_text(line) for line in s.lines]
             fields = self.session.emulation.input_fields()
         self.choices = find_choices(lines, fields)
+        self.trail.visit(screen_title(lines, fields))
+        self.nav.refresh()
         if self._choice is not None and self._choice not in (*self.choices.options,
                                                              *self.choices.rows):
             self._choice = None
@@ -259,6 +284,7 @@ class TerminalWidget(QWidget):
 
     def press_key(self, action: str) -> None:
         """A key bar button: press that host key as if it were typed."""
+        self.view_live()                # a key acts on the live screen, never a past one
         self.session.touch()
         self.scroll_offset = 0
         self.clear_selection()
@@ -295,6 +321,180 @@ class TerminalWidget(QWidget):
             self.session.run_binding(Binding("action", "enter"))
         self._on_update()
 
+    # ------------------------------------------------------- navigation
+
+    def history_index(self, title: str) -> int | None:
+        """The latest past screen with this title, for a breadcrumb step."""
+        items = self.session.history.items
+        for i in range(len(items) - 1, -1, -1):
+            if items[i].title == title:
+                return i
+        return None
+
+    def view_history(self, index: int | None) -> None:
+        """Show a past screen (-1 is the latest); out of range shows the live one."""
+        items = self.session.history.items
+        if index is not None and index < 0:
+            index += len(items)
+        if index is None or not 0 <= index < len(items):
+            self.view_live()
+            return
+        self.viewing = index
+        self.scroll_offset = 0
+        self.clear_selection()
+        self._hot = self._choice = None
+        self.nav.refresh()
+        self.update()
+        self.setFocus()
+
+    def view_live(self) -> None:
+        if self.viewing is not None:
+            self.viewing = None
+            self.clear_selection()
+            self.nav.refresh()
+            self.update()
+        self.setFocus()
+
+    def _history_key(self, name: str) -> None:
+        """Keys while a past screen is shown: they never reach the host. Esc
+        (or any other key) goes back to the live screen."""
+        binding = self.session.keymap.lookup(name)
+        action = binding.value if binding and binding.kind == "action" else ""
+        if action in ("copy", "palette", "print-screen"):
+            self.do_action(action)
+        elif name in ("Left", "Up", "PageUp"):
+            self.view_history(max(0, self.viewing - 1))
+        elif name in ("Right", "Down", "PageDown"):
+            self.view_history(self.viewing + 1)
+        else:
+            self.view_live()
+
+    def screen_lines(self) -> list[str]:
+        """The text of the screen shown (live or past), hidden fields blank."""
+        if self.viewing is not None:
+            return list(self.session.history.items[self.viewing].text)
+        with self.session.lock:
+            return [self._line_text(line) for line in self.session.screen.lines]
+
+    def copy_screen(self) -> None:
+        QGuiApplication.clipboard().setText(screen_text(self.screen_lines()))
+        self.message.emit("Screen text copied")
+
+    def tables(self) -> list[Table]:
+        return find_tables(self.screen_lines())
+
+    def export_table(self) -> None:
+        """The largest table on the screen as CSV: to a file, or in limited
+        mode (no file choosers) to the clipboard."""
+        tables = self.tables()
+        if not tables:
+            self.message.emit("There is no table on this screen")
+            return
+        text = table_csv(max(tables, key=lambda t: t.size))
+        if self.limited:
+            QGuiApplication.clipboard().setText(text)
+            self.message.emit("Table copied as CSV")
+            return
+        from ..session import transfer_folder
+        lines = self.screen_lines()
+        name = re.sub(r"[^\w-]+", "-", screen_title(lines).lower()).strip("-") or "table"
+        path, _ = QFileDialog.getSaveFileName(self, "Export table as CSV",
+                                              str(transfer_folder() / f"{name}.csv"),
+                                              "CSV files (*.csv)")
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8", newline="") as f:
+                f.write(text)
+        except OSError as e:
+            QMessageBox.warning(self, "Export table", f"Cannot write {path}: {e.strerror or e}")
+            return
+        self.message.emit(f"Table saved to {path}")
+
+    def open_palette(self) -> None:
+        if self.palette is not None:
+            self.palette.field.setFocus()
+            return
+        items = self.palette_items()
+        if self.palette_extra is not None:
+            items += self.palette_extra(self)
+        self.palette = CommandPalette(self, items)
+
+    def palette_items(self) -> list[Item]:
+        """What this tab offers in the command palette; the window adds its own."""
+        profile = self.session.profile
+        items = [Item("Transactions", code, desc, lambda c=code: self.run_transaction(c))
+                 for code, desc in profile.transactions.items()]
+        items += [Item("Macros", name, "macro", lambda n=name: (self.session.run_macro(n),
+                                                                 self._on_update()))
+                  for name in profile.macros]
+        if self.viewing is None:
+            items += [Item("Keys on this screen", k.label or k.action.upper(),
+                           self.key_hint(k.action) or k.action.upper(),
+                           lambda a=k.action: self.press_key(a))
+                      for k in self.screen_keys()]
+        history = self.session.history.items
+        if self.modern:
+            items += [Item("Recent screens", snap.title or "Untitled screen",
+                           time.strftime("%H:%M:%S", time.localtime(snap.when)),
+                           lambda i=i: self.view_history(i))
+                      for i, snap in reversed(list(enumerate(history)))]
+        items.append(Item("Actions", "Copy screen text", "", self.copy_screen))
+        if self.tables():
+            items.append(Item("Actions", "Export table as CSV", "", self.export_table))
+        if self.modern and history:
+            items.append(Item("Actions", "Screen history", f"{len(history)} screens",
+                              lambda: self.view_history(-1)))
+        if self.viewing is not None:
+            items.append(Item("Actions", "Back to live screen", "Esc", self.view_live))
+        items.append(Item("Actions", "Print screen", "", self.print_screen))
+        items.append(Item("Actions", "Search the screen", "", self.find_requested.emit))
+        return items
+
+    def run_transaction(self, code: str) -> None:
+        """Start a transaction the way a person would. 3270: Clear, wait for
+        the host, type the code and press Enter. 5250: type it on the
+        screen's command line and press Enter."""
+        self.view_live()
+        emu = self.session.emulation
+        if getattr(emu, "locked", False):
+            self.message.emit("The host is busy; try again when the keyboard unlocks")
+            return
+        if emu.family == "ibm5250":
+            with self.session.lock:
+                lines = [self._line_text(line) for line in self.session.screen.lines]
+                command = find_choices(lines, emu.input_fields()).command
+                if command is None:
+                    self.message.emit("There is no command line on this screen")
+                    return
+                emu.click(command.row * self.session.screen.cols + command.col)
+                emu.do_action("erase-eof")
+                emu.type_text(code)
+            self.session.run_binding(Binding("action", "enter"))
+            self._on_update()
+            return
+        self.session.run_binding(Binding("action", "clear"))
+        self._pending = (code, time.monotonic())
+        self._on_update()
+        QTimer.singleShot(50, self._transaction_tick)
+
+    def _transaction_tick(self) -> None:
+        """Type a waiting transaction once the host has answered Clear."""
+        if self._pending is None:
+            return
+        code, since = self._pending
+        if getattr(self.session.emulation, "locked", False):
+            if time.monotonic() - since < CLEAR_WAIT_MS / 1000 and not self.ended:
+                QTimer.singleShot(50, self._transaction_tick)
+            else:
+                self._pending = None
+                self.message.emit(f"The host didn't answer Clear; {code} was not sent")
+            return
+        self._pending = None
+        self.session.send_text(code)
+        self.session.run_binding(Binding("action", "enter"))
+        self._on_update()
+
     def sizeHint(self):
         return QSize(self.cw * self.session.screen.cols, self.ch * self.session.screen.rows)
 
@@ -302,12 +502,21 @@ class TerminalWidget(QWidget):
         self._apply_resize()
         super().resizeEvent(event)
 
+    def _top(self) -> int:
+        """Height of the bar above the screen (Modern view), which the grid leaves free."""
+        return self.nav.height() if self.modern else 0
+
     def _apply_resize(self) -> None:
+        top = self._top()
+        self.nav.setGeometry(0, 0, self.width(), top)
+        if self.palette is not None:
+            self.palette._place()
         if self.resize_mode == "scale" or self.session.emulation.fixed_size:
             self._fit_font()
             return
+        self.offset_y = top
         cols = max(2, self.width() // self.cw)
-        rows = max(2, self.height() // self.ch)
+        rows = max(2, (self.height() - top) // self.ch)
         s = self.session.screen
         if (cols, rows) != (s.cols, s.rows):
             self.session.resize(cols, rows)
@@ -317,22 +526,24 @@ class TerminalWidget(QWidget):
     def _fit_font(self) -> None:
         """Scale mode: keep the host's grid and size the font to fill the window."""
         s = self.session.screen
-        if self.width() < 10 or self.height() < 10:
+        top = self._top()
+        height = self.height() - top
+        if self.width() < 10 or height < 10:
             return
         ref = QFont(self.base_family)
         ref.setPointSizeF(100)
         ref.setStyleHint(QFont.StyleHint.TypeWriter)
         fm = QFontMetricsF(ref)
         w100, h100 = fm.horizontalAdvance("M"), fm.height() * self._line_spacing()
-        size = 100 * min(self.width() / (s.cols * w100), self.height() / (s.rows * h100))
+        size = 100 * min(self.width() / (s.cols * w100), height / (s.rows * h100))
         size = max(4.0, int(size * 2) / 2)          # half-point steps
         self.set_font(self.base_family, size)
         # Integer cell metrics can round up; step down until the grid fits.
-        while size > 4 and (self.cw * s.cols > self.width() or self.ch * s.rows > self.height()):
+        while size > 4 and (self.cw * s.cols > self.width() or self.ch * s.rows > height):
             size -= 0.5
             self.set_font(self.base_family, size)
         self.offset_x = max(0, (self.width() - self.cw * s.cols) // 2)
-        self.offset_y = max(0, (self.height() - self.ch * s.rows) // 2)
+        self.offset_y = top + max(0, (height - self.ch * s.rows) // 2)
 
     # ---------------------------------------------------------- connection
 
@@ -517,6 +728,9 @@ class TerminalWidget(QWidget):
         if named is None:
             return
         name, text = named
+        if self.viewing is not None:
+            self._history_key(name)
+            return
         self.scroll_offset = 0
         try:
             handled = self.session.key(name, text) if name else (self.session.send_text(text) or True)
@@ -544,11 +758,14 @@ class TerminalWidget(QWidget):
             self.scroll_by(self.session.screen.rows // 2)
         elif name == "scroll-down":
             self.scroll_by(-(self.session.screen.rows // 2))
+        elif name == "palette" and self.can_be_modern:
+            self.open_palette()
 
     def paste(self, mode=None) -> None:
         cb = QGuiApplication.clipboard()
         text = cb.text(mode or QClipboard.Mode.Clipboard)
         if text:
+            self.view_live()
             self.session.paste(text)
             if self.session.emulation.block_mode:
                 self._on_update()               # a local edit: repaint and refresh the OIA
@@ -577,6 +794,13 @@ class TerminalWidget(QWidget):
         menu.addAction("Search…", self.find_requested.emit)
         menu.addAction("Colours for this session…", self.colours_requested.emit)
         menu.addAction("Print screen…", self.print_screen)
+        if self.can_be_modern:
+            menu.addSeparator()
+            menu.addAction("Copy screen text", self.copy_screen)
+            csv = menu.addAction("Export table as CSV…", self.export_table)
+            csv.setEnabled(bool(self.tables()))
+            if self.viewing is not None:
+                menu.addAction("Back to live screen", self.view_live)
         if self.transfer_enabled and not self.limited:
             menu.addSeparator()
             up = menu.addAction("Upload files…", self.choose_upload)
@@ -774,8 +998,15 @@ class TerminalWidget(QWidget):
     # ----------------------------------------------------------- scrollback
 
     def _all_lines(self):
+        if self.viewing is not None:
+            return self.session.history.items[self.viewing].lines
         s = self.session.screen
         return (s.scrollback if not s.using_alt_screen else []) + s.lines
+
+    @property
+    def _live(self) -> bool:
+        """Is the live screen shown, not scrollback or a past screen?"""
+        return self.scroll_offset == 0 and self.viewing is None
 
     def scroll_by(self, n: int) -> None:
         s = self.session.screen
@@ -784,6 +1015,8 @@ class TerminalWidget(QWidget):
         self.update()
 
     def wheelEvent(self, event: QWheelEvent) -> None:
+        if self.viewing is not None:
+            return                  # a past screen: the wheel never pages the live one
         if self.modern and self._can_page():
             self._wheel_page(event.angleDelta().y())
             return
@@ -820,7 +1053,7 @@ class TerminalWidget(QWidget):
 
     def _cell_at(self, pos) -> tuple[int, int]:
         s = self.session.screen
-        history = 0 if s.using_alt_screen else len(s.scrollback)
+        history = 0 if s.using_alt_screen or self.viewing is not None else len(s.scrollback)
         row = max(0, min(s.rows - 1, (int(pos.y()) - self.offset_y) // self.ch))
         col = max(0, min(s.cols, (int(pos.x()) - self.offset_x) // self.cw))
         return history - self.scroll_offset + row, col
@@ -829,7 +1062,7 @@ class TerminalWidget(QWidget):
 
     def _hotspot(self, pos) -> tuple[int, int, int, str] | None:
         """The clickable key name (PF3=Exit, ENTER, ...) under ``pos``."""
-        if not self.hotspots or self.scroll_offset:
+        if not self.hotspots or not self._live:
             return None
         s = self.session.screen
         x, y = int(pos.x()) - self.offset_x, int(pos.y()) - self.offset_y
@@ -844,7 +1077,7 @@ class TerminalWidget(QWidget):
 
     def _choice_at(self, pos) -> MenuOption | ListRow | None:
         """The menu option or list row under ``pos`` (Modern view)."""
-        if not self.modern or self.scroll_offset:
+        if not self.modern or not self._live:
             return None
         x, y = int(pos.x()) - self.offset_x, int(pos.y()) - self.offset_y
         if x < 0 or y < 0:
@@ -906,7 +1139,7 @@ class TerminalWidget(QWidget):
             self.pick(choice)
             return
         if (self.modern and event.button() == Qt.MouseButton.LeftButton
-                and not self._sel_range() and self.scroll_offset == 0):
+                and not self._sel_range() and self._live):
             # Modern view: a click in an input field puts the cursor there.
             row, col = self._cell_at(event.position())
             with self.session.lock:
@@ -1011,24 +1244,24 @@ class TerminalWidget(QWidget):
             p.fillRect(self.rect(), QColor(*(sch.fg if s.reverse_screen else sch.bg)))
             p.translate(self.offset_x, self.offset_y)
             lines = self._all_lines()
-            history = len(lines) - s.rows
+            history = len(lines) - s.rows if self.viewing is None else 0
             first = history - self.scroll_offset
             for row in range(s.rows):
                 line_no = first + row
                 if not (0 <= line_no < len(lines)):
                     continue
                 self._paint_line(p, row, line_no, lines[line_no], s.reverse_screen)
-            if self._hot and self.scroll_offset == 0:
+            if self._hot and self._live:
                 row, start, end, _ = self._hot
                 if row < s.rows and end <= s.cols:
                     fg, _ = self._colors(s.lines[row][start].attr, False, s.reverse_screen)
                     p.setPen(fg)
                     y = row * self.ch + self.ch - 1
                     p.drawLine(start * self.cw, y, end * self.cw - 1, y)
-            if self.modern and self.scroll_offset == 0:
+            if self.modern and self._live:
                 self._paint_choice(p)
                 self._paint_fields(p, s)
-            if s.cursor_visible and self.scroll_offset == 0:
+            if s.cursor_visible and self._live:
                 rect = QRect(s.x * self.cw, s.y * self.ch, self.cw, self.ch)
                 cursor = QColor(*sch.cursor)
                 if self.hasFocus():

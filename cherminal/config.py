@@ -117,6 +117,9 @@ class SessionProfile:
                                       # graphite, paper, or session (its own colours)
     keys: dict[str, str] = field(default_factory=dict)
     macros: dict[str, str] = field(default_factory=dict)
+    # 3270/5250: transaction or command codes for the command palette,
+    # e.g. CUST01 = "Customer inquiry".
+    transactions: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.transport not in TRANSPORTS:
