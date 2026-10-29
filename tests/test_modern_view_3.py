@@ -262,7 +262,7 @@ def test_palette_runs_transactions_and_keys(app, tmp_path):
     term, sent = _term(tmp_path, view="modern", transactions={"CUST01": "Customer inquiry"},
                        macros={"hello": "HELLO"})
     term.session.key("Ctrl+K")                              # action:palette
-    pal = term.palette
+    pal = term.command_palette
     assert pal is not None and not pal.isHidden()
     labels = [i.label for i in pal.items]
     assert {"CUST01", "hello", "Exit", "Copy screen text"} <= set(labels)
@@ -270,7 +270,7 @@ def test_palette_runs_transactions_and_keys(app, tmp_path):
     assert pal.chosen().label == "Exit"
     pal.field.setText("cust")
     _key(pal.field, Qt.Key.Key_Return)                      # runs CUST01: Clear first
-    assert term.palette is None and sent[-1][:1] == b"\x6d"   # AID Clear
+    assert term.command_palette is None and sent[-1][:1] == b"\x6d"   # AID Clear
     term._transaction_tick()                                # host hasn't answered: waits
     assert term._pending is not None
     term.session.feed(record(b"\xf5\xc3"))                  # the host unlocks the keyboard
@@ -310,9 +310,74 @@ def test_window_palette_actions_and_editor(app, tmp_path):
     labels = [i.label for i in win._palette_items(term)]
     assert "Reconnect" in labels and "Classic view" in labels
     win.open_palette()
-    assert term.palette is not None and "Reconnect" in [i.label for i in term.palette.items]
+    assert term.command_palette is not None and "Reconnect" in [i.label for i in term.command_palette.items]
     ed = SessionEditor(SessionProfile(name="mf", transport="telnet", host="h",
                                       emulation="ibm3278-2",
                                       transactions={"CUST01": "Customer inquiry"}),
                        ProfileStore(tmp_path, site_roots=[]))
     assert ed._build().transactions == {"CUST01": "Customer inquiry"}
+
+
+# ------------------------------------------------------- 0.11.1 fixes
+
+
+def _click(widget, pos):
+    from PyQt6.QtCore import QPointF, Qt
+    from PyQt6.QtGui import QMouseEvent
+    from PyQt6.QtWidgets import QApplication
+    pos = QPointF(pos)
+    glob = QPointF(widget.mapToGlobal(pos.toPoint()))
+    for kind in (QMouseEvent.Type.MouseButtonPress, QMouseEvent.Type.MouseButtonRelease):
+        QApplication.sendEvent(widget, QMouseEvent(
+            kind, pos, glob, Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton
+            if kind == QMouseEvent.Type.MouseButtonPress else Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier))
+
+
+def test_palette_closes_on_a_click_outside_without_passing_it_on(app, tmp_path):
+    from PyQt6.QtCore import QPoint, Qt
+    term, sent = _term(tmp_path, view="modern")
+    term.show()
+    s = term.session.screen
+    start = (s.y, s.x)
+    term.open_palette()
+    pal = term.command_palette
+    # A click on the command line, behind nothing: the palette closes and
+    # the cursor stays where it was.
+    target = QPoint(int(term.offset_x + 30 * term.cw), int(term.offset_y + 20.5 * term.ch))
+    _click(term, target)
+    assert term.command_palette is None and pal.isHidden() and (s.y, s.x) == start
+    _click(term, target)                                    # the next click acts normally
+    term.open_palette()
+    _key(term, Qt.Key.Key_Escape)                           # Esc with the focus anywhere
+    assert term.command_palette is None
+    term.open_palette()
+    from PyQt6.QtWidgets import QToolButton
+    [close] = [b for b in term.command_palette.findChildren(QToolButton) if b.text() == "✕"]
+    close.click()
+    assert term.command_palette is None and sent == []
+
+
+def test_modern_button_names_the_other_view(app, tmp_path):
+    from cherminal.gui.app import MainWindow
+    win = MainWindow(ProfileStore(tmp_path, site_roots=[]))
+    term, _ = _term(tmp_path)
+    term.connect_session = lambda: None
+    win.tabs.addTab(term, "mf")
+    win._tab_changed(0)
+    assert win.modern_button.text() == "Modern view"
+    win.modern_button.click()
+    assert term.modern and win.modern_button.text() == "Classic view"
+    win.modern_button.click()
+    assert not term.modern and win.modern_button.text() == "Modern view"
+
+
+def test_modern_screen_sits_on_a_rounded_card(app, tmp_path):
+    term, _ = _term(tmp_path, view="modern")
+    card = term._card()
+    s = term.session.screen
+    assert card.top() >= term.nav.height() and card.left() > 0
+    assert term.offset_x >= card.left() + 8 and term.offset_y >= card.top() + 8
+    assert term.offset_x + term.cw * s.cols <= card.right() - 7
+    assert term.offset_y + term.ch * s.rows <= card.bottom() - 7
+    term.grab()

@@ -3,6 +3,14 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.11.1
+
+- Modern view: the button beside the tabs now says which view it switches
+  to (Modern view or Classic view).
+- The command palette (Ctrl+K) closes on Esc wherever the focus is, on its
+  new ✕, or on a click anywhere outside it; that click does nothing else.
+- Modern view draws the screen on a card with slightly rounded corners.
+
 ## 0.11.0
 
 - Modern view, part 3: a breadcrumb above the screen from the screens' own

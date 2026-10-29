@@ -116,9 +116,9 @@ class MainWindow(QMainWindow):
                                            "mac:palette")
         self.history_action = self._action(v, "Screen &history",
                                            lambda: self._term() and self._term().view_history(-1))
+        # The button names the view it switches to; the menu item is a tick.
         self.modern_button = QToolButton(text="Modern view", autoRaise=True)
-        self.modern_button.setDefaultAction(self.modern_action)
-        self.modern_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.modern_button.clicked.connect(self.modern_action.trigger)
         self.tabs.setCornerWidget(self.modern_button, Qt.Corner.TopRightCorner)
         self._show_modern_switch(None)
         s = mb.addMenu("&Session")
@@ -288,10 +288,18 @@ class MainWindow(QMainWindow):
         self.modern_action.setVisible(usable)
         self.modern_button.setVisible(usable)
         self.modern_action.setChecked(bool(term and term.modern))
+        self._label_modern_button()
         block = bool(term and term.can_be_modern)
         for act in (self.palette_action, self.copy_screen_action, self.export_action):
             act.setVisible(block)
         self.history_action.setVisible(bool(term and term.modern))
+
+    def _label_modern_button(self) -> None:
+        to_classic = self.modern_action.isChecked()
+        self.modern_button.setText("Classic view" if to_classic else "Modern view")
+        self.modern_button.setToolTip(
+            f"Switch to {'Classic' if to_classic else 'Modern'} view "
+            f"({self.modern_action.shortcut().toString()})")
 
     def open_palette(self) -> None:
         term = self._term()
@@ -325,7 +333,9 @@ class MainWindow(QMainWindow):
         if term and term.can_be_modern and policy.current().modern_view != "off":
             term.set_modern(self.modern_action.isChecked())
             self.keybar.refresh()
+            self.history_action.setVisible(term.modern)
             term.setFocus()
+        self._label_modern_button()
 
     def choose_font(self) -> None:
         term = self._term()

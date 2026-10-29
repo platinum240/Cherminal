@@ -122,7 +122,10 @@ On 3270 screens you can also:
 ### Modern view
 
 View › Modern view (Ctrl+Shift+M), or the **Modern view** button beside
-the tabs, gives a 3270 or 5250 screen a more familiar look:
+the tabs (it reads **Classic view** to switch back), gives a 3270 or 5250
+screen a more familiar look. Modern view is only for IBM 3270 and 5250
+display sessions: VT, Wyse and other character terminals have no fields
+to work with.
 
 - Every input field has a box round it, and the one with the cursor is
   outlined in the cursor colour.
@@ -160,7 +163,8 @@ the tabs, gives a 3270 or 5250 screen a more familiar look:
   the tab closes.
 
 **Command palette.** Press **Ctrl+K** (⌘K on a Mac) in a 3270 or 5250 tab,
-or **Go to…** on the breadcrumb bar, and type to find:
+or **Go to…** on the breadcrumb bar, and type to find (Esc, ✕ or a click
+outside the box closes it):
 
 - **Transactions** the session lists (File › Edit this session… ›
   Keyboard & macros › Transactions, for example `CUST01` "Customer

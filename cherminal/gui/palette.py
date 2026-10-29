@@ -13,7 +13,16 @@ from typing import NamedTuple
 
 from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtGui import QKeyEvent
-from PyQt6.QtWidgets import QFrame, QLineEdit, QListWidget, QListWidgetItem, QVBoxLayout
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QToolButton,
+    QVBoxLayout,
+)
 
 SECTIONS = ("Transactions", "Macros", "Keys on this screen", "Recent screens", "Actions")
 RECENT_SHOWN = 6                # recent screens listed before anything is typed
@@ -66,14 +75,18 @@ CommandPalette { background: palette(window); border: 1px solid palette(mid);
                  border-radius: 8px; }
 CommandPalette QLineEdit { padding: 6px 8px; font-size: 115%; }
 CommandPalette QListWidget { border: none; background: transparent; }
+CommandPalette QToolButton { border: none; padding: 4px 8px; font-size: 115%; }
 """
 
 
 class CommandPalette(QFrame):
-    """A search box and a list, shown over the top of a terminal."""
+    """A search box and a list, shown over the top of a terminal. Esc, the ✕
+    or a click anywhere outside it closes it; that click goes no further,
+    so it never presses a button or moves the cursor behind the palette."""
 
     def __init__(self, term, items: list[Item]):
         super().__init__(term)
+        self._closing = False               # closed by a click: swallow its release too
         self.term = term
         self.items = items
         self.setStyleSheet(STYLE)
@@ -85,10 +98,17 @@ class CommandPalette(QFrame):
         self.list = QListWidget()
         self.list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.list.itemClicked.connect(lambda it: self._run(it))
+        close = QToolButton(text="✕", toolTip="Close (Esc)")
+        close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        close.clicked.connect(lambda: self.close_palette())
+        top = QHBoxLayout()
+        top.addWidget(self.field, 1)
+        top.addWidget(close)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
-        lay.addWidget(self.field)
+        lay.addLayout(top)
         lay.addWidget(self.list)
+        QApplication.instance().installEventFilter(self)
         self._fill("")
         self._place()
         self.show()
@@ -156,7 +176,23 @@ class CommandPalette(QFrame):
             if key == Qt.Key.Key_Escape:
                 self.close_palette()
                 return True
+        kind = event.type()
+        if self._closing:
+            if kind == QEvent.Type.MouseButtonRelease:
+                self._finish()
+                return True                 # the rest of the click that closed it
+            return False
+        if kind in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick) \
+                and not self._inside(event.globalPosition().toPoint()):
+            self.close_palette(click=True)
+            return True
+        if kind == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+            self.close_palette()            # Esc wherever the focus is
+            return True
         return super().eventFilter(obj, event)
+
+    def _inside(self, global_pos) -> bool:
+        return self.isVisible() and self.rect().contains(self.mapFromGlobal(global_pos))
 
     def _run(self, it: QListWidgetItem | None) -> None:
         item = it.data(Qt.ItemDataRole.UserRole) if it is not None else None
@@ -165,9 +201,19 @@ class CommandPalette(QFrame):
         self.close_palette()
         item.run()
 
-    def close_palette(self) -> None:
+    def close_palette(self, click: bool = False) -> None:
+        if self._closing:
+            return
         self.hide()
-        self.deleteLater()
-        if self.term.palette is self:
-            self.term.palette = None
+        if self.term.command_palette is self:
+            self.term.command_palette = None
         self.term.setFocus()
+        if click:
+            self._closing = True            # wait for the mouse button to come up
+        else:
+            self._finish()
+
+    def _finish(self) -> None:
+        QApplication.instance().removeEventFilter(self)
+        self._closing = False
+        self.deleteLater()
