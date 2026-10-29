@@ -468,7 +468,9 @@ class SessionEditor(QDialog):
         self.serial_device.setCompleter(QCompleter(ports, self.serial_device))
         self.serial_device.setToolTip("Serial ports on this computer: " + (", ".join(ports) or
                                       "none found") + (". On a Mac they are named like "
-                                      "/dev/cu.usbserial-…" if system.IS_MAC else ""))
+                                      "/dev/cu.usbserial-…" if system.IS_MAC else
+                                      ". On Windows they are named COM1, COM2…"
+                                      if system.IS_WINDOWS else ""))
         self.baud = QComboBox(editable=True)
         self.baud.addItems([str(b) for b in BAUDS])
         self.data_bits = QComboBox()

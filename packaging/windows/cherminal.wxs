@@ -1,0 +1,71 @@
+<!--
+  Windows Installer package for Cherminal (WiX Toolset 5); built by
+  packaging/build-windows.ps1, which passes Version, AppDir (the PyInstaller
+  folder) and IconFile.
+
+  Installs for all users into C:\Program Files\Cherminal with a Start menu
+  entry, and creates %ProgramData%\Cherminal, the folder for the site
+  policy and shared sessions, writable only by administrators. Each version
+  replaces the one before (same UpgradeCode); uninstalling leaves files an
+  administrator put in %ProgramData%\Cherminal.
+
+  Deploy silently with: msiexec /i Cherminal-<version>-windows-x64.msi /qn
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Cherminal" Manufacturer="Cherminal" Version="$(Version)"
+           UpgradeCode="c7b70078-8df1-461c-b16d-2fd3dcfe488d" Scope="perMachine"
+           InstallerVersion="500">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Cherminal is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="cherminal.ico" SourceFile="$(IconFile)" />
+    <Property Id="ARPPRODUCTICON" Value="cherminal.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/platinum240/Cherminal" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/platinum240/Cherminal/blob/main/docs/WINDOWS.md" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Cherminal">
+        <Files Include="$(AppDir)\**" />
+
+        <!-- The audit log's event source, so Event Viewer shows the text of
+             each entry (the message file .NET uses for the same purpose). -->
+        <Component Id="EventSource" Guid="9cd9bc08-618b-44e7-9fa7-24f92e79ed94">
+          <RegistryKey Root="HKLM"
+                       Key="SYSTEM\CurrentControlSet\Services\EventLog\Application\Cherminal">
+            <RegistryValue Name="EventMessageFile" Type="expandable" KeyPath="yes"
+                           Value="%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll" />
+            <RegistryValue Name="TypesSupported" Type="integer" Value="7" />
+          </RegistryKey>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuEntry" Guid="b60f6e8c-5c14-40b9-9723-6a4252659587">
+        <!-- The ID groups the app's windows under this shortcut's taskbar
+             button (cherminal.system.WINDOWS_APP_ID). -->
+        <Shortcut Id="CherminalShortcut" Name="Cherminal"
+                  Description="Terminal emulator for host connections"
+                  Target="[INSTALLFOLDER]Cherminal.exe" WorkingDirectory="INSTALLFOLDER">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="io.github.platinum240.cherminal" />
+        </Shortcut>
+        <RegistryValue Root="HKLM" Key="Software\Cherminal" Name="StartMenuEntry"
+                       Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <!-- %ProgramData%\Cherminal: full control for SYSTEM and Administrators,
+         read only for everyone else. Not inherited from %ProgramData%, where
+         any user may create folders: a user must not be able to replace the
+         site policy. -->
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="SITEFOLDER" Name="Cherminal">
+        <Component Id="SiteFolder" Guid="5c26178a-0098-4c6f-bc5c-8ef51be914c6">
+          <CreateFolder>
+            <PermissionEx Sddl="D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)" />
+          </CreateFolder>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+  </Package>
+</Wix>

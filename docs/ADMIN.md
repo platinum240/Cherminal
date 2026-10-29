@@ -4,7 +4,8 @@ This guide is for the people who install Cherminal on workstations and thin
 clients, set up the sessions users connect with, and decide what users may
 change. For using Cherminal day to day, see the [user guide](USER.md).
 For Macs (folders, Jamf and managed preferences, signing), see
-[MACOS.md](MACOS.md); the rest of this guide applies to them too.
+[MACOS.md](MACOS.md); for Windows (the installer, folders, the event log),
+see [WINDOWS.md](WINDOWS.md). The rest of this guide applies to them too.
 
 - [1. What gets installed where](#1-what-gets-installed-where)
 - [2. Installing](#2-installing)

@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from .. import policy
+from .. import policy, system
 from ..config import SessionProfile, config_dir, site_dirs
 from ..emulation import EMULATIONS
 from .base import Transport
 
 # Host keys every user trusts: the system's OpenSSH file, then a
 # known_hosts file in each shared setup folder.
-SYSTEM_KNOWN_HOSTS = Path("/etc/ssh/ssh_known_hosts")
+SYSTEM_KNOWN_HOSTS = system.system_known_hosts()
 
 
 def from_profile(profile: SessionProfile, ask_password=None, confirm_host_key=None,
@@ -24,6 +22,9 @@ def from_profile(profile: SessionProfile, ask_password=None, confirm_host_key=No
 def _make(profile, ask_password, confirm_host_key, ask_login) -> Transport:
     emu = EMULATIONS[profile.emulation]
     if profile.transport == "local":
+        if system.IS_WINDOWS:
+            from .conpty import ConPtyTransport
+            return ConPtyTransport(profile.command, term=emu.term_type)
         from .local import LocalTransport
         return LocalTransport(profile.command, term=emu.term_type)
     if profile.transport == "telnet":

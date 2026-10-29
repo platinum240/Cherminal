@@ -1,7 +1,10 @@
 import os
 import socket
+import sys
 import threading
 import time
+
+import pytest
 
 from cherminal.transport.base import Transport
 from cherminal.transport.local import LocalTransport
@@ -71,6 +74,7 @@ def test_telnet_close_ends_reader_and_socket():
     srv.close()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Unix pseudo-terminal")
 def test_local_shell_is_hung_up_on_close():
     t = LocalTransport("sleep 30")
     t.open()

@@ -1,24 +1,34 @@
-"""Local shell or program on a pseudo-terminal."""
+"""Local shell or program on a pseudo-terminal (on Windows, see conpty)."""
 
 from __future__ import annotations
 
-import fcntl
 import os
-import pty
-import pwd
 import shlex
+import shutil
 import signal
 import struct
-import termios
+import sys
 
 from .. import system
 from .base import Transport
+
+if sys.platform != "win32":
+    import fcntl
+    import pty
+    import pwd
+    import termios
 
 
 def login_shell() -> list[str]:
     """The user's shell. Apps started from the macOS Finder or Dock may have
     no $SHELL, and Mac terminals start it as a login shell so that
-    ~/.zprofile and the like are read."""
+    ~/.zprofile and the like are read. Windows has no login shell: PowerShell
+    (the newer pwsh when it is installed), else the command prompt."""
+    if system.IS_WINDOWS:
+        for shell in ("pwsh.exe", "powershell.exe"):
+            if shutil.which(shell):
+                return [shell]
+        return [os.environ.get("COMSPEC") or "cmd.exe"]
     shell = os.environ.get("SHELL")
     if not shell:
         try:

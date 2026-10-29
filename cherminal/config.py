@@ -74,7 +74,7 @@ class SessionProfile:
     file_transfer: bool = False       # SSH: upload files dropped on the window (SFTP)
     upload_dir: str = ""              # SSH: where dropped files go; "" = home folder
     command: str = ""                 # local: program to run (default $SHELL)
-    serial_device: str = "/dev/ttyUSB0"
+    serial_device: str = field(default_factory=system.default_serial_device)  # /dev/ttyUSB0, COM1
     baud: int = 9600
     data_bits: int = 8
     parity: str = "none"              # none | even | odd | mark | space
@@ -208,12 +208,14 @@ BUNDLE_FORMAT = 1
 def site_dirs() -> list[Path]:
     """Shared, read-only setup folders, highest priority first.
 
-    * ``$CHERMINAL_SITE_DIR`` - one or more folders (``:``-separated), e.g. a share
+    * ``$CHERMINAL_SITE_DIR`` - one or more folders (``:``-separated; ``;`` on
+      Windows), e.g. a share
     * ``cherminal-config/`` next to the AppImage, so a copied folder travels with it
     * ``cherminal/`` in each ``$XDG_CONFIG_DIRS`` folder (default ``/etc/xdg``;
-      on macOS ``/Library/Application Support/Cherminal``)
+      on macOS ``/Library/Application Support/Cherminal``; on Windows
+      ``%ProgramData%\\Cherminal``)
     """
-    dirs = [Path(d) for d in os.environ.get("CHERMINAL_SITE_DIR", "").split(":") if d]
+    dirs = [Path(d) for d in os.environ.get("CHERMINAL_SITE_DIR", "").split(os.pathsep) if d]
     if os.environ.get("APPIMAGE"):
         dirs.append(Path(os.environ["APPIMAGE"]).parent / "cherminal-config")
     return dirs + system.site_config_dirs()

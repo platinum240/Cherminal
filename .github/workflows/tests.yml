@@ -13,6 +13,8 @@ jobs:
         include:
           - os: macos-latest
             python: "3.12"
+          - os: windows-latest
+            python: "3.12"
     env:
       QT_QPA_PLATFORM: offscreen
     steps:

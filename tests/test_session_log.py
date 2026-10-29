@@ -2,6 +2,7 @@
 
 import errno
 import os
+import sys
 
 import pytest
 
@@ -80,7 +81,8 @@ def test_vt_session_log_hides_hidden_text(tmp_path):
     assert text.count("line 9") == 1              # the screen at the end is written once
     assert "disconnected: closed by the user ====" in text
     path = tmp_path / "state/cherminal/logs/payroll.log"
-    assert oct(path.stat().st_mode & 0o777) == "0o600"
+    if sys.platform != "win32":                   # Windows has ACLs, not modes
+        assert oct(path.stat().st_mode & 0o777) == "0o600"
 
 
 def test_log_survives_a_drop_and_reconnect(tmp_path):

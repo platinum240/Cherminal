@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .system import IS_MAC
+from .system import IS_MAC, IS_WINDOWS
 
 MODIFIERS = ("Ctrl", "Alt", "Shift")
 
@@ -287,6 +287,15 @@ MAC_EXTRA: dict[str, dict[str, str]] = {
                 "Ctrl+=": "action:field-plus", "Ctrl+-": "action:field-minus"},
 }
 
+# Windows keeps some keys for itself: Ctrl+Pause arrives as Ctrl+Break, Print
+# Screen opens the Snipping Tool on Windows 11 and Alt+Print Screen copies
+# the window. The IBM maps add other keys for what those do on Linux.
+WINDOWS_EXTRA: dict[str, dict[str, str]] = {
+    "ibm3270": {"Ctrl+Break": "action:clear"},
+    "ibm5250": {"Ctrl+Break": "action:clear", "Ctrl+P": "action:print",
+                "Shift+Pause": "action:sysreq"},
+}
+
 BUILTIN: dict[str, dict[str, str]] = {
     "vt100": _vt100(), "vt220": _vt220(), "xterm": _xterm(), "linux": _linux(),
     "ansi": _ansi(), "wyse": _wyse(), "ibm3270": _ibm3270(), "ibm5250": _ibm5250(),
@@ -314,13 +323,15 @@ class Keymap:
     bindings: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def builtin(cls, name: str, mac: bool = IS_MAC) -> "Keymap":
+    def builtin(cls, name: str, mac: bool = IS_MAC, windows: bool = IS_WINDOWS) -> "Keymap":
         if name not in BUILTIN:
             raise ValueError(f"unknown built-in keymap {name!r}")
         km = cls(dict(COMMON))
         km.update(BUILTIN[name])
         if mac:
             km.update(MAC_EXTRA.get(name, {}))
+        if windows:
+            km.update(WINDOWS_EXTRA.get(name, {}))
         return km
 
     def update(self, overrides: dict[str, str]) -> None:

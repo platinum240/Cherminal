@@ -2,6 +2,7 @@
 
 import os
 import socket
+import sys
 import threading
 import time
 
@@ -255,6 +256,7 @@ def app():
     return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="CUPS lp; Windows uses the spooler")
 def test_printer_session_job_reaches_lp(app, tmp_path, monkeypatch):
     from PyQt6.QtWidgets import QApplication
 

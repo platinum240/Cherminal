@@ -111,6 +111,15 @@ def print_screen(term, parent=None, allow_file: bool = True) -> bool:
 def print_raw(data: bytes, printer_name: str, parent=None) -> str:
     """Send a host's passthrough job to the printer untouched, as a terminal
     printer port would. Returns a status line for the user."""
+    if system.IS_WINDOWS:
+        name = printer_name or QPrinterInfo.defaultPrinterName()
+        if name:
+            try:
+                windows_raw_print(data, name)
+                return f"Sent a {len(data)} byte print job to {name}"
+            except OSError as e:
+                QMessageBox.warning(parent, "Print", f"The host's print job failed: {e}")
+                return "Print job failed"
     lp = shutil.which("lp")
     if lp:
         cmd = [lp, "-o", "raw", "-s"]
@@ -158,3 +167,44 @@ def print_text(text: str, printer_name: str, title: str = "Host print job") -> s
         return "Print job dropped: no printer is set up on this machine"
     render(printer, text.rstrip("\n").split("\n"), title, system.font_family(""))
     return f"Printed {title} on {printer.printerName()}"
+
+
+def windows_raw_print(data: bytes, printer_name: str, title: str = "Host print job") -> None:
+    """Hand a job to a Windows printer untouched (the spooler's RAW data
+    type), as ``lp -o raw`` does on Linux and macOS."""
+    import ctypes
+    from ctypes import wintypes
+
+    class DocInfo(ctypes.Structure):
+        _fields_ = [("pDocName", wintypes.LPWSTR), ("pOutputFile", wintypes.LPWSTR),
+                    ("pDatatype", wintypes.LPWSTR)]
+
+    spool = ctypes.WinDLL("winspool.drv", use_last_error=True)
+    spool.OpenPrinterW.argtypes = [wintypes.LPWSTR, ctypes.POINTER(wintypes.HANDLE),
+                                   ctypes.c_void_p]
+    spool.StartDocPrinterW.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(DocInfo)]
+    spool.WritePrinter.argtypes = [wintypes.HANDLE, ctypes.c_char_p, wintypes.DWORD,
+                                   ctypes.POINTER(wintypes.DWORD)]
+    for fn in ("StartPagePrinter", "EndPagePrinter", "EndDocPrinter", "ClosePrinter"):
+        getattr(spool, fn).argtypes = [wintypes.HANDLE]
+
+    def check(ok) -> None:
+        if not ok:
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    handle = wintypes.HANDLE()
+    check(spool.OpenPrinterW(printer_name, ctypes.byref(handle), None))
+    try:
+        info = DocInfo(title, None, "RAW")
+        check(spool.StartDocPrinterW(handle, 1, ctypes.byref(info)))
+        try:
+            check(spool.StartPagePrinter(handle))
+            written = wintypes.DWORD()
+            check(spool.WritePrinter(handle, data, len(data), ctypes.byref(written)))
+            if written.value != len(data):
+                raise OSError(f"the spooler took {written.value} of {len(data)} bytes")
+            check(spool.EndPagePrinter(handle))
+        finally:
+            spool.EndDocPrinter(handle)
+    finally:
+        spool.ClosePrinter(handle)
