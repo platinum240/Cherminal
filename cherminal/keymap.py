@@ -8,6 +8,7 @@ application keypad mode.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from .system import IS_MAC
@@ -342,3 +343,18 @@ class Keymap:
             if k in self.bindings:
                 return Binding.parse(self.bindings[k])
         return None
+
+    def key_for(self, action: str) -> str:
+        """The key that runs ``action``, for showing beside a button: an
+        unmodified key if there is one, else the shortest. "" if none does.
+        A 3270 ``pf3`` is also found as the 5250 ``f3``."""
+        wanted = {f"action:{action}"}
+        if action.startswith("pf") and action[2:].isdigit():
+            wanted.add(f"action:f{action[2:]}")
+        keys = [k for k, v in self.bindings.items() if v in wanted and ":" not in k]
+
+        def effort(key: str) -> tuple:
+            # F13-F24 are missing from most keyboards: Shift+F1 beats F13.
+            rare = bool(re.fullmatch(r"F(1[3-9]|2[0-4])", key.split("+")[-1]))
+            return key.count("+") + 1.5 * rare, len(key), key
+        return min(keys, key=effort, default="")

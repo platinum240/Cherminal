@@ -40,6 +40,7 @@ browser opens.
     log_total_mb = 10                 # session logs never take more than this in all
     audit_log = true                  # connection log to syslog/journald (never keystrokes)
     ssh_known_hosts_only = true       # SSH only to hosts whose keys the administrator added
+    modern_view = "allowed"           # 3270/5250 Modern view: "off", "allowed" or "default"
 """
 
 from __future__ import annotations
@@ -56,6 +57,7 @@ from . import system
 POLICY_PATH = system.policy_path()
 TRANSPORTS = ("ssh", "telnet", "serial", "local")
 LOGGING = ("allowed", "never", "always")
+MODERN_VIEW = ("off", "allowed", "default")
 
 
 class PolicyError(ValueError):
@@ -79,6 +81,7 @@ class Policy:
     log_total_mb: int = 10
     audit_log: bool = False
     ssh_known_hosts_only: bool = False   # refuse SSH hosts whose keys aren't known
+    modern_view: str = "allowed"      # "off": classic only; "default": modern unless chosen
     source: str = field(default="", compare=False)   # where it was read from
     given: frozenset = field(default=frozenset(), compare=False)   # settings in the file
 
@@ -111,6 +114,8 @@ class Policy:
                 raise PolicyError(f"{key} must be a whole number, {low} or more")
         if values.get("session_logging", "allowed") not in LOGGING:
             raise PolicyError(f"session_logging must be one of {', '.join(LOGGING)}")
+        if values.get("modern_view", "allowed") not in MODERN_VIEW:
+            raise PolicyError(f"modern_view must be one of {', '.join(MODERN_VIEW)}")
         return cls(**values, source=source, given=frozenset(data))
 
     @property
@@ -151,6 +156,12 @@ class Policy:
         if self.max_idle_timeout and (not minutes or minutes > self.max_idle_timeout):
             return self.max_idle_timeout
         return minutes
+
+    def modern(self, view: str) -> bool:
+        """Does a session whose view setting is ``view`` start in Modern view?"""
+        if self.modern_view == "off":
+            return False
+        return view == "modern" or (not view and self.modern_view == "default")
 
     def logging(self, wanted: bool) -> bool:
         return {"never": False, "always": True}.get(self.session_logging, wanted)

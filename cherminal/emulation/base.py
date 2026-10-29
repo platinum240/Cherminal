@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import codecs
-from typing import Callable
+from typing import Callable, NamedTuple
 
 from ..screen import Screen
 
@@ -12,6 +12,30 @@ from ..screen import Screen
 # sequences are far shorter; without a limit an endless one (a broken host, or
 # a binary file shown on screen) grows until the client freezes.
 MAX_SEQUENCE = 4096          # one escape / control sequence or string, in characters
+
+
+class InputField(NamedTuple):
+    """The part of one block-mode input field on one row (a field that wraps
+    onto the next row comes back as two)."""
+    row: int
+    col: int
+    length: int
+    numeric: bool = False       # the host only takes numbers here
+    hidden: bool = False        # non-display, e.g. a password
+    modified: bool = False      # typed in since the host sent it
+
+
+def row_spans(positions: list[int], cols: int, **flags) -> list[InputField]:
+    """Split consecutive screen positions into one InputField per row."""
+    out: list[InputField] = []
+    for p in positions:
+        row, col = divmod(p, cols)
+        last = out[-1] if out else None
+        if last and last.row == row and last.col + last.length == col:
+            out[-1] = last._replace(length=last.length + 1)
+        else:
+            out.append(InputField(row, col, 1, **flags))
+    return out
 
 
 class Emulation:
@@ -60,6 +84,15 @@ class Emulation:
     def notice(self, text: str) -> None:
         """Show a message from Cherminal itself, such as a disconnect."""
         self.feed_text(f"\r\n[Cherminal: {text}]\r\n")
+
+    def input_fields(self) -> list[InputField]:
+        """Where the user can type, for a block-mode screen (none otherwise)."""
+        return []
+
+    def click(self, pos: int) -> bool:
+        """Move the cursor to screen position ``pos`` if the user can type
+        there; returns whether it moved. Character-mode hosts own their cursor."""
+        return False
 
     def reset(self) -> None:
         self.screen.reset()

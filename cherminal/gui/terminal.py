@@ -7,14 +7,14 @@ import re
 import threading
 from dataclasses import replace
 
-from PyQt6.QtCore import QEvent, QObject, QRect, QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QObject, QRect, QRectF, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (QClipboard, QColor, QCursor, QFont, QFontMetrics, QFontMetricsF,
-                         QGuiApplication, QKeyEvent, QMouseEvent, QPainter, QWheelEvent)
+                         QGuiApplication, QKeyEvent, QMouseEvent, QPainter, QPen, QWheelEvent)
 from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu,
                              QMessageBox, QProgressDialog, QWidget)
 
 from .. import policy, system
-from ..emulation.hotspots import hotspot_at
+from ..emulation.hotspots import ScreenKey, hotspot_at, screen_keys
 from ..keymap import Binding
 from ..screen import Attr
 from ..session import Session
@@ -25,6 +25,7 @@ IDLE_CHECK_MS = 5000            # how often the idle timeout is checked
 IDLE_WARNING = 60               # seconds of warning before an idle disconnect
 RETRY_DELAYS = (2, 5, 10, 20, 30, 60)   # seconds between reconnect attempts
 MAX_RETRIES = 10
+MODERN_LINE_SPACING = 1.3       # Modern view: rows a little apart, so fields have room
 
 
 class _Bridge(QObject):
@@ -43,6 +44,7 @@ class TerminalWidget(QWidget):
     status_changed = pyqtSignal(str)
     message = pyqtSignal(str)                   # a passing note for the status bar
     find_requested = pyqtSignal()
+    screen_changed = pyqtSignal()               # Modern view: the key bar may need updating
     colours_requested = pyqtSignal()
 
     def __init__(self, session: Session, parent=None, limited: bool = False):
@@ -60,6 +62,11 @@ class TerminalWidget(QWidget):
         self.setCursor(Qt.CursorShape.IBeamCursor)
         self.resize_mode = session.profile.resize_mode
         self.offset_x = self.offset_y = 0     # centres the grid in scale mode
+        # Modern view (IBM 3270/5250 displays): boxed input fields, click to
+        # move the cursor, and a key bar under the screen (see app.KeyBar).
+        emu = session.emulation
+        self.can_be_modern = emu.block_mode and not emu.printer
+        self.modern = self.can_be_modern and policy.current().modern(session.profile.view)
         self.set_base_font(session.profile.font_family, session.profile.font_size)
 
         self.scroll_offset = 0                 # lines scrolled back into history
@@ -138,10 +145,45 @@ class TerminalWidget(QWidget):
         self.bold_font.setBold(True)
         fm = QFontMetrics(font)
         self.cw = max(1, fm.horizontalAdvance("M"))
-        self.ch = max(1, fm.height())
-        self.ascent = fm.ascent()
+        self.ch = max(1, round(fm.height() * self._line_spacing()))
+        self.ascent = fm.ascent() + (self.ch - fm.height()) // 2
         self.updateGeometry()
         self.update()
+
+    def _line_spacing(self) -> float:
+        return MODERN_LINE_SPACING if getattr(self, "modern", False) else 1.0
+
+    def set_modern(self, on: bool) -> None:
+        """Switch this tab between Classic and Modern view (the session file is untouched)."""
+        on = on and self.can_be_modern
+        if on == self.modern:
+            return
+        self.modern = on
+        self.set_font(self.base_family, self.base_size)
+        self._apply_resize()
+        self.screen_changed.emit()
+
+    def screen_keys(self) -> list[ScreenKey]:
+        """The keys the current screen lists (F3=Exit...), for the key bar."""
+        with self.session.lock:
+            lines = [self._line_text(line) for line in self.session.screen.lines]
+        return screen_keys(lines)
+
+    def key_hint(self, action: str) -> str:
+        """The keyboard key for ``action``, e.g. "F3", shown beside its button."""
+        return self.session.keymap.key_for(action)
+
+    def press_key(self, action: str) -> None:
+        """A key bar button: press that host key as if it were typed."""
+        self.session.touch()
+        self.scroll_offset = 0
+        self.clear_selection()
+        if self.ended and action == "enter":
+            self.reconnect_now()
+        else:
+            self.session.run_binding(Binding("action", action))
+            self._on_update()
+        self.setFocus()
 
     def sizeHint(self):
         return QSize(self.cw * self.session.screen.cols, self.ch * self.session.screen.rows)
@@ -171,7 +213,7 @@ class TerminalWidget(QWidget):
         ref.setPointSizeF(100)
         ref.setStyleHint(QFont.StyleHint.TypeWriter)
         fm = QFontMetricsF(ref)
-        w100, h100 = fm.horizontalAdvance("M"), fm.height()
+        w100, h100 = fm.horizontalAdvance("M"), fm.height() * self._line_spacing()
         size = 100 * min(self.width() / (s.cols * w100), self.height() / (s.rows * h100))
         size = max(4.0, int(size * 2) / 2)          # half-point steps
         self.set_font(self.base_family, size)
@@ -231,6 +273,8 @@ class TerminalWidget(QWidget):
             self._repaint.start()
         if self.hotspots and self.underMouse():
             self._hover(self.mapFromGlobal(QCursor.pos()))      # the screen changed under it
+        if self.modern:
+            self.screen_changed.emit()
         title = self.session.screen.title
         if title != self._last_title:
             self._last_title = title
@@ -703,6 +747,14 @@ class TerminalWidget(QWidget):
             self.session.run_binding(Binding("action", press[3]))
             self._on_update()
             return
+        if (self.modern and event.button() == Qt.MouseButton.LeftButton
+                and not self._sel_range() and self.scroll_offset == 0):
+            # Modern view: a click in an input field puts the cursor there.
+            row, col = self._cell_at(event.position())
+            with self.session.lock:
+                moved = self.session.emulation.click(row * self.session.screen.cols + col)
+            if moved:
+                self._on_update()
         text = self.selected_text()
         # X11 and Wayland keep a primary selection for middle-click paste; macOS doesn't.
         if text and QGuiApplication.clipboard().supportsSelection():
@@ -808,6 +860,8 @@ class TerminalWidget(QWidget):
                     p.setPen(fg)
                     y = row * self.ch + self.ch - 1
                     p.drawLine(start * self.cw, y, end * self.cw - 1, y)
+            if self.modern and self.scroll_offset == 0:
+                self._paint_fields(p, s)
             if s.cursor_visible and self.scroll_offset == 0:
                 rect = QRect(s.x * self.cw, s.y * self.ch, self.cw, self.ch)
                 cursor = QColor(*sch.cursor)
@@ -821,6 +875,24 @@ class TerminalWidget(QWidget):
                     p.setPen(cursor)
                     p.drawRect(rect.adjusted(0, 0, -1, -1))
         p.end()
+
+    def _paint_fields(self, p: QPainter, s) -> None:
+        """Modern view: a rounded box round each input field, a focus ring
+        round the one holding the cursor."""
+        sch = self.colors
+        border = QColor(*(round(a * 0.45 + b * 0.55) for a, b in zip(sch.fg, sch.bg)))
+        focus = QColor(*sch.cursor)
+        cursor = (s.y, s.x)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        pad = max(2.0, self.cw * 0.25)
+        for f in self.session.emulation.input_fields():
+            box = QRectF(f.col * self.cw - pad, f.row * self.ch + 1.5,
+                         f.length * self.cw + 2 * pad, self.ch - 3)
+            has_cursor = f.row == cursor[0] and f.col <= cursor[1] < f.col + f.length
+            p.setPen(QPen(focus if has_cursor else border, 2 if has_cursor else 1))
+            p.drawRoundedRect(box, 4, 4)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
     def _paint_line(self, p: QPainter, row: int, line_no: int, line, screen_reverse: bool) -> None:
         y = row * self.ch

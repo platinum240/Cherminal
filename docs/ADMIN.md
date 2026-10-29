@@ -141,6 +141,7 @@ setting is in `packaging/elux/policy.toml.example` (installed on eLux as
 | `log_dir` | per user | Where session logs go; `%u` is replaced with the user name. |
 | `log_total_mb` | `10` | All session logs together stay under this size. |
 | `audit_log` | `false` | Write connection events to syslog/journald. |
+| `modern_view` | `"allowed"` | 3270/5250 Modern view: `"off"` keeps everyone on the classic screen, `"default"` starts sessions in Modern view unless they choose Classic. |
 
 Settings the policy decides are greyed out in the session editor with a
 tooltip saying so. Sessions the policy doesn't allow show a message saying
@@ -370,6 +371,19 @@ fields only, and stops at a numeric field that would get letters. Key
 names on the screen, such as `PF3=Exit` and `ENTER`, can be clicked; turn
 that off per session with `hotspots = false`.
 
+**Modern view.** Users can switch a 3270 or 5250 tab to Modern view: boxed
+input fields, click to move the cursor, and a bar of buttons for the keys
+the screen lists. It only changes how the screen is drawn and what the
+mouse does; the data sent to the host is the same. A session's
+`view = "modern"` or `"classic"` picks how it starts, and the policy's
+`modern_view` turns it off or makes it the default for sessions that don't
+choose.
+
+**Other ports.** Some TN3270 servers offer extra ports that skip the
+front screen and go straight to an application or a submenu (for example
+2323). Give each its own session with `port = 2323`, or type `host:2323`
+in the Host box.
+
 Both 3270 and 5250 default to EBCDIC code page 037. Set another (`cp500`, `cp273`,
 `cp1140`, ...) under Terminal › Character set if your system uses one. Use
 TLS on port 992 where the host offers it ([section 6](#6-tls-and-certificates)).
@@ -435,7 +449,7 @@ default.
 | `name` | `"New session"` | Shown in the session list and on the tab. |
 | `transport` | `"ssh"` | `ssh`, `telnet`, `serial` or `local`. |
 | `host` | | Host name or address. |
-| `port` | `0` | 0 = the usual port (22 SSH, 23 Telnet, 992 Telnet with TLS). |
+| `port` | `0` | 0 = the usual port (22 SSH, 23 Telnet, 992 Telnet with TLS); any other, such as `2323`, connects there. |
 | `tls` | `false` | Telnet/TN3270/TN5250 over TLS. |
 | `tls_verify` | `true` | Check the host's certificate. |
 | `device_name` | | TN5250 device name, up to 10 of A-Z 0-9 @ # $ _. |
@@ -464,6 +478,7 @@ default.
 | `enter_sends` | `"cr"` | `cr`, `crlf` or `lf`. |
 | `resize_mode` | `"scale"` | `scale` (text fits the window) or `grow` (add rows and columns). |
 | `hotspots` | `true` | 3270: click key names such as `PF3=Exit` on the screen. |
+| `view` | site default | 3270/5250: `"classic"` or `"modern"` (boxed fields, click to move, key buttons). |
 | `printer` | ask | CUPS printer to use without asking (and for 3287 printer sessions). |
 | `host_print` | `true` | VT: allow host passthrough printing. |
 | `keepalive` | `60` | Seconds between keep-alives; 0 = off. |

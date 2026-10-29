@@ -57,3 +57,28 @@ def hotspot_at(line: str, col: int) -> Hotspot | None:
         if spot.start <= col < spot.end:
             return spot
     return None
+
+
+class ScreenKey(NamedTuple):
+    action: str         # e.g. "pf3"
+    label: str          # what the screen calls it, e.g. "Exit"; "" for a bare "PF3"
+
+
+KEY_ROWS = 4            # panels list their keys in the last few rows
+
+
+def screen_keys(lines: list[str]) -> list[ScreenKey]:
+    """The keys a panel lists in its last rows (``F3=Exit F7=Back``), top to
+    bottom and left to right, once each. Enter is left out: the Modern view
+    key bar always has it."""
+    found: dict[str, ScreenKey] = {}
+    for line in lines[-KEY_ROWS:]:
+        for spot in find_hotspots(line):
+            if spot.action == "enter" or spot.action in found:
+                continue
+            parts = _EQUALS.split(line[spot.start:spot.end], maxsplit=1)
+            found[spot.action] = ScreenKey(spot.action, parts[1] if len(parts) == 2 else "")
+    return list(found.values())
+
+
+_EQUALS = re.compile(r" *=+>? *")

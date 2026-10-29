@@ -16,6 +16,10 @@ Mac keyboards don't have.
   press **Connect**, or double-click it. Sessions your administrator shares
   are marked `[shared]`.
 - **Connect once without saving:** File › Quick connect… (Ctrl+Shift+N).
+- **A different port:** some hosts listen on more than one port, for
+  example a mainframe that goes straight to an application menu on 2323.
+  Set **Port** in the session, or type `host:2323` in the Host box.
+  "default" uses the usual port, shown beside it (23, or 992 with TLS).
 - **More than one session:** each opens in its own tab.
 - **Signing in:** Cherminal never stores passwords. It asks when the host
   needs one, or the host shows its own sign-on screen.
@@ -114,6 +118,23 @@ On 3270 screens you can also:
   screen, or the CMS command line) first, choose send or receive, the host
   file name and your local file, and press the button. A progress window
   shows how it goes.
+
+### Modern view
+
+View › Modern view (Ctrl+Shift+M), or the **Modern view** button beside
+the tabs, gives a 3270 or 5250 screen a more familiar look:
+
+- Every input field has a box round it, and the one with the cursor is
+  outlined in the cursor colour.
+- **Click a field** to put the cursor there. Clicking text you can't type
+  over does nothing, and dragging still selects text to copy.
+- A **key bar** under the screen has a button for each key the screen
+  lists (`F3=Exit` becomes **Exit**, with F3 beside it), **More keys** for
+  PA1, Clear, Attention and the rest, and **Send** for Enter.
+
+Every key works the same in both views, and the host can't tell them
+apart. The switch changes the open tab; to start a session in Modern view
+every time, set Terminal › **IBM 3270/5250 view** in the session.
 
 The status bar shows the terminal's state: `X System` or `X SYSTEM` while
 the host is busy (wait), `X Protected` or `X II` when you typed somewhere

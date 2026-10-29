@@ -14,7 +14,8 @@ from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QCompleter, QDi
                              QWidget)
 
 from .. import emulation, policy, system
-from ..config import BUNDLE_SUFFIX, TRANSPORTS, ProfileStore, SessionProfile
+from ..config import (BUNDLE_SUFFIX, DEFAULT_PORTS, TRANSPORTS, ProfileStore, SessionProfile,
+                      split_host_port)
 from ..keymap import Binding, normalize_key
 from .colors import (PALETTE_NAMES, SCHEMES, contrast, ensure_contrast, palette_256,
                      parse_hex, resolve, to_hex)
@@ -429,9 +430,13 @@ class SessionEditor(QDialog):
         self.transport = QComboBox()
         self.transport.addItems([t for t in TRANSPORTS if t in policy.current().allowed_transports])
         self.transport.currentTextChanged.connect(self._transport_changed)
-        self.host = QLineEdit()
+        self.host = QLineEdit(placeholderText="host name or address; host:port works too")
         self.port = QSpinBox(maximum=65535, specialValueText="default")
+        self.port.setToolTip("Leave at default for the usual port. Some hosts listen on "
+                             "others too, for example a TN3270 server on 2323 that goes "
+                             "straight to an application menu.")
         self.tls = QCheckBox("Use TLS (port 992 by default)")
+        self.tls.toggled.connect(lambda _: self._port_default())
         self.tls_verify = QCheckBox("Check the host's certificate")
         self.device_name = QLineEdit(placeholderText="chosen by the host")
         self.device_name.setMaxLength(10)
@@ -514,6 +519,17 @@ class SessionEditor(QDialog):
                                   "on the screen")
         self.hotspots.setToolTip("Key names the host shows become links: hovering shows a "
                                  "pointing hand, clicking presses that key.")
+        self.view = QComboBox()
+        site = "Modern" if policy.current().modern_view == "default" else "Classic"
+        self.view.addItem(f"Site default ({site})", "")
+        self.view.addItem("Classic", "classic")
+        self.view.addItem("Modern: boxed fields, key buttons", "modern")
+        self.view.setToolTip("How IBM 3270 and 5250 screens look. Modern view boxes the input "
+                             "fields, moves the cursor where you click and shows the screen's "
+                             "keys as buttons. View › Modern view switches an open tab.")
+        if policy.current().modern_view == "off":
+            self.view.setEnabled(False)
+            self.view.setToolTip("Modern view is turned off on this computer.")
         self.enter_sends = QComboBox()
         self.enter_sends.addItems(["cr", "crlf", "lf"])
         self.resize_mode = QComboBox()
@@ -525,7 +541,8 @@ class SessionEditor(QDialog):
                               ("Font size", self.font_size),
                               ("Answerback", self.answerback), ("Enter sends", self.enter_sends),
                               ("When the window resizes", self.resize_mode),
-                              ("", self.local_echo), ("", self.hotspots)):
+                              ("", self.local_echo), ("", self.hotspots),
+                              ("IBM 3270/5250 view", self.view)):
             f.addRow(label, widget)
         return w
 
@@ -714,7 +731,14 @@ class SessionEditor(QDialog):
 
     # ------------------------------------------------------------ data
 
+    def _port_default(self) -> None:
+        """Show which port "default" means for this kind of connection."""
+        kind = self.transport.currentText()
+        port = 992 if kind == "telnet" and self.tls.isChecked() else DEFAULT_PORTS.get(kind)
+        self.port.setSpecialValueText(f"default ({port})" if port else "default")
+
     def _transport_changed(self, kind: str) -> None:
+        self._port_default()
         for widget, kinds in self._rows.values():
             self._form.setRowVisible(widget, kind in kinds)
         self._form.setRowVisible(self.device_name, kind == "telnet" and self._is_5250())
@@ -782,6 +806,7 @@ class SessionEditor(QDialog):
         self.answerback.setText(p.answerback)
         self.local_echo.setChecked(p.local_echo)
         self.hotspots.setChecked(p.hotspots)
+        self.view.setCurrentIndex(max(0, self.view.findData(p.view)))
         self.enter_sends.setCurrentText(p.enter_sends)
         self.resize_mode.setCurrentIndex(max(0, self.resize_mode.findData(p.resize_mode)))
         self.keymap.setCurrentIndex(max(0, self.keymap.findData(p.keymap)))
@@ -812,9 +837,10 @@ class SessionEditor(QDialog):
                 Binding.parse(v)
         for v in self.macros.items().values():
             Binding.parse(v)
+        host, port = split_host_port(self.host.text())     # "host:2323" sets the port
         return SessionProfile(
             name=self.name.text().strip() or "Untitled", transport=self.transport.currentText(),
-            host=self.host.text().strip(), port=self.port.value(),
+            host=host, port=port or self.port.value(),
             tls=self.tls.isChecked(), tls_verify=self.tls_verify.isChecked(),
             device_name=self.device_name.text().strip().upper() if self._is_5250() else "",
             lu_name=self.lu_name.text(),
@@ -833,7 +859,7 @@ class SessionEditor(QDialog):
             keymap=self.keymap.currentData(), backspace=self.backspace.currentData(),
             option_key=self.option_key.currentData(),
             answerback=self.answerback.text(), local_echo=self.local_echo.isChecked(),
-            hotspots=self.hotspots.isChecked(),
+            hotspots=self.hotspots.isChecked(), view=self.view.currentData(),
             enter_sends=self.enter_sends.currentText(),
             resize_mode=self.resize_mode.currentData(), printer=self._printer_name(),
             host_print=self.host_print.isChecked(), idle_timeout=self.idle_timeout.value(),

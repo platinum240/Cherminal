@@ -5,10 +5,10 @@ from __future__ import annotations
 import signal
 import sys
 
-from PyQt6.QtCore import QLoggingCategory, QTimer
+from PyQt6.QtCore import QLoggingCategory, Qt, QTimer
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (QApplication, QFontDialog, QLabel, QMainWindow, QMessageBox,
-                             QTabWidget, QToolBar, QVBoxLayout, QWidget)
+                             QTabWidget, QToolBar, QToolButton, QVBoxLayout, QWidget)
 
 from .. import __version__, policy, system
 from ..config import ProfileStore, SessionProfile
@@ -17,6 +17,7 @@ from ..keymap import Binding
 from ..session import Session
 from .dialogs import SessionColoursDialog, SessionEditor, SessionManager
 from .icons import app_icon, logo
+from .keybar import KeyBar
 from .search import SearchBar
 from .terminal import TerminalWidget
 
@@ -48,11 +49,13 @@ class MainWindow(QMainWindow):
         self.tabs.tabCloseRequested.connect(self.close_tab)
         self.tabs.currentChanged.connect(self._tab_changed)
         self.search = SearchBar()
+        self.keybar = KeyBar()
         central = QWidget()
         lay = QVBoxLayout(central)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
         lay.addWidget(self.tabs, 1)
+        lay.addWidget(self.keybar)
         lay.addWidget(self.search)
         self.setCentralWidget(central)
         self.status = QLabel()
@@ -99,6 +102,14 @@ class MainWindow(QMainWindow):
         self.scale_action.setCheckable(True)
         self._action(v, "Show &function-key bar",
                      lambda: self.fkey_bar.setVisible(not self.fkey_bar.isVisible()))
+        # Modern view for IBM 3270/5250 tabs: in the View menu and beside the tabs.
+        self.modern_action = self._action(v, "&Modern view", self.toggle_modern, "Ctrl+Shift+M")
+        self.modern_action.setCheckable(True)
+        self.modern_button = QToolButton(text="Modern view", autoRaise=True)
+        self.modern_button.setDefaultAction(self.modern_action)
+        self.modern_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.tabs.setCornerWidget(self.modern_button, Qt.Corner.TopRightCorner)
+        self._show_modern_switch(None)
         s = mb.addMenu("&Session")
         self._action(s, "&Reconnect", self.reconnect)
         self._action(s, "&Disconnect", lambda: self._term() and self._term().user_disconnect())
@@ -185,6 +196,8 @@ class MainWindow(QMainWindow):
         term = self._term()
         self.fkey_bar.clear()
         self.search.set_terminal(term)
+        self.keybar.set_terminal(term)
+        self._show_modern_switch(term)
         self.transfer_action.setVisible(bool(term and term.session.can_transfer))
         if not term:
             self.status.setText("")
@@ -233,9 +246,13 @@ class MainWindow(QMainWindow):
     def reconnect(self) -> None:
         term = self._term()
         if term:
-            profile, colours = term.session.profile, term.colour_override
+            profile, colours, modern = term.session.profile, term.colour_override, term.modern
             self.close_tab(self.tabs.currentIndex())
-            self.open_session(profile, colours)
+            new = self.open_session(profile, colours)
+            if new:
+                new.set_modern(modern)
+                self._show_modern_switch(new)
+                self.keybar.refresh()
 
     def open_search(self) -> None:
         if self._term():
@@ -251,6 +268,21 @@ class MainWindow(QMainWindow):
         if dlg.exec():
             term.set_colour_override(dlg.override())
         term.setFocus()
+
+    def _show_modern_switch(self, term) -> None:
+        """The Modern view switch is there for IBM 3270/5250 display tabs,
+        unless the site policy turns Modern view off."""
+        usable = bool(term and term.can_be_modern) and policy.current().modern_view != "off"
+        self.modern_action.setVisible(usable)
+        self.modern_button.setVisible(usable)
+        self.modern_action.setChecked(bool(term and term.modern))
+
+    def toggle_modern(self) -> None:
+        term = self._term()
+        if term and term.can_be_modern and policy.current().modern_view != "off":
+            term.set_modern(self.modern_action.isChecked())
+            self.keybar.refresh()
+            term.setFocus()
 
     def choose_font(self) -> None:
         term = self._term()
