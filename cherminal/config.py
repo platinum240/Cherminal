@@ -24,6 +24,7 @@ from .keymap import BUILTIN, Keymap
 TRANSPORTS = ("ssh", "telnet", "serial", "local")
 DEFAULT_PORTS = {"ssh": 22, "telnet": 23}
 OPTION_KEYS = ("alt", "left-alt", "text")
+VIEWS = ("", "classic", "modern")      # "" = what the site policy says (classic if nothing)
 
 
 PALETTE_NAMES = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
@@ -39,6 +40,16 @@ def _check_hex(value: str) -> None:
 
 def config_dir() -> Path:
     return system.config_dir()
+
+
+def split_host_port(text: str) -> tuple[str, int]:
+    """``mainframe.example.com:2323`` -> (host, 2323); port 0 when none is given.
+    More than one colon is a bare IPv6 address, which has no port."""
+    text = text.strip()
+    host, sep, port = text.rpartition(":")
+    if sep and host and ":" not in host and port.isdigit() and 0 < int(port) <= 65535:
+        return host, int(port)
+    return text, 0
 
 
 def slugify(name: str) -> str:
@@ -98,6 +109,7 @@ class SessionProfile:
     log_file_kb: int = 1024           # start a new log file at this size
     log_keep: int = 2                 # older log files kept; older ones are deleted
     hotspots: bool = True             # 3270: click PF3=Exit and other key names on screen
+    view: str = ""                    # 3270/5250: "classic" or "modern"; "" = site default
     keys: dict[str, str] = field(default_factory=dict)
     macros: dict[str, str] = field(default_factory=dict)
 
@@ -110,6 +122,10 @@ class SessionProfile:
             raise ValueError("backspace must be 'del' or 'bs'")
         if self.option_key not in OPTION_KEYS:
             raise ValueError(f"option_key must be one of {', '.join(OPTION_KEYS)}")
+        if self.view not in VIEWS:
+            raise ValueError("view must be classic or modern")
+        if not 0 <= self.port <= 65535:
+            raise ValueError("port must be between 1 and 65535 (0 = the usual port)")
         if self.enter_sends not in ("cr", "crlf", "lf"):
             raise ValueError("enter_sends must be cr, crlf or lf")
         self.lu_name = self.lu_name.strip().upper()

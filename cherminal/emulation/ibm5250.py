@@ -28,7 +28,7 @@ import re
 from dataclasses import dataclass, field
 
 from ..screen import DEFAULT_ATTR, Attr, Cell
-from .base import Emulation
+from .base import Emulation, InputField, row_spans
 from .ibm3270 import EOR, IAC, MAX_RECORD
 
 # GDS record header.
@@ -204,6 +204,25 @@ class IBM5250(Emulation):
             if f.start <= pos <= f.end:
                 return f
         return None
+
+    def input_fields(self) -> list[InputField]:
+        out = []
+        for f in self._input_fields():
+            hidden = f.attr is not None and f.attr & A_NONDISPLAY == A_NONDISPLAY
+            out += row_spans(list(range(f.start, f.end + 1)), self.cols,
+                             numeric=f.shift in (SHIFT_NUMERIC_ONLY, SHIFT_DIGITS_ONLY,
+                                                 SHIFT_SIGNED),
+                             hidden=hidden, modified=f.mdt)
+        return out
+
+    def click(self, pos: int) -> bool:
+        f = self.field_at(pos)
+        if self.locked or self.inhibited or f is None or f.bypass:
+            return False
+        self.cursor = min(pos, f.data[-1]) if len(f.data) else f.start
+        self._fer_at = None
+        self._render()
+        return True
 
     def _input_fields(self) -> list[Field]:
         return [f for f in self.fields if not f.bypass]

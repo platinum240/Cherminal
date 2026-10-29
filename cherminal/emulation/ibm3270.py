@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from ..screen import DEFAULT_ATTR, Attr, Cell
 from . import indfile, tn3270e
-from .base import Emulation
+from .base import Emulation, InputField, row_spans
 
 # The largest 3270 data stream record kept. A full 27x132 screen with every
 # order is well under 64 KB; anything bigger is broken and is thrown away.
@@ -190,6 +190,25 @@ class IBM3270(Emulation):
 
     def _fields(self) -> list[int]:
         return [p for p, a in enumerate(self.fa) if a is not None]
+
+    def input_fields(self) -> list[InputField]:
+        out = []
+        for start in self._fields():
+            fa = self.fa[start]
+            if fa & FA_PROTECT:
+                continue
+            out += row_spans([p % self.size for p in self._field_range(start)], self.cols,
+                             numeric=bool(fa & FA_NUMERIC),
+                             hidden=fa & FA_DISPLAY == FA_HIDDEN, modified=bool(fa & FA_MDT))
+        return out
+
+    def click(self, pos: int) -> bool:
+        if self.locked or not 0 <= pos < self.size or \
+                (self._formatted() and self._protected(pos)):
+            return False
+        self.cursor = pos
+        self._render()
+        return True
 
     def _next_unprotected(self, pos: int) -> int:
         """First data position of the next unprotected field after ``pos``."""

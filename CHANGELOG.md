@@ -5,6 +5,17 @@ Check what you are running with `cherminal --version` (or
 
 ## Unreleased
 
+- Modern view for IBM 3270 and 5250 sessions (View › Modern view,
+  Ctrl+Shift+M, or the button beside the tabs): input fields are boxed,
+  the field with the cursor is outlined, a click puts the cursor in a
+  field, and a key bar under the screen turns the screen's `F3=Exit` style
+  keys into buttons, with More keys (PA1, Clear, Attention, SysReq...) and
+  Send. Sessions choose how they start with `view = "classic"` or
+  `"modern"`; the site policy's `modern_view` can turn it off or make it
+  the default. Nothing changes in what is sent to the host.
+- Ports: the session editor shows which port "default" means (23, 992 with
+  TLS, 22 for SSH), `host:2323` typed in the Host box sets the port, and a
+  port outside 1-65535 is refused when the session is saved.
 - macOS: Cherminal runs on Macs (macOS 12 and later, Apple Silicon and
   Intel), built as `Cherminal.app` in a `.dmg` and a `.pkg` by
   `packaging/build-macos.sh` and the new `macos` workflow. See
