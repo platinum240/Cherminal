@@ -267,6 +267,7 @@ class IBM3270(Emulation):
 
     def process(self, rec: bytes) -> None:
         """Run one host record (a command and its data)."""
+        self.field_error = None                 # a new screen from the host
         cmd = COMMANDS.get(rec[0])
         if cmd in (CMD_W, CMD_EW, CMD_EWA):
             if cmd == CMD_EW:
@@ -695,6 +696,7 @@ class IBM3270(Emulation):
         return True
 
     def _type_char(self, ch: str) -> bool:
+        self.field_error = None
         if self.locked:
             return self._refuse(self.lock_reason)
         try:
@@ -712,6 +714,10 @@ class IBM3270(Emulation):
             return self._refuse("Protected")
         start = self.field_start(pos)
         if start is not None and self.fa[start] & FA_NUMERIC and ch and ch not in NUMERIC_KEYS:
+            if self.soft_errors:
+                self.field_error = (pos, "Numbers only in this field")
+                self.message = "X NUM"
+                return False
             return self._refuse("NUM")             # numeric lock: digits, . , - only
         if self.insert:
             span = [p % self.size for p in (self._field_range(start) if start is not None
@@ -734,6 +740,7 @@ class IBM3270(Emulation):
 
     def do_action(self, name: str) -> bool:
         """Run a 3270 key; returns False for names this emulation does not know."""
+        self.field_error = None
         n = self.size
         if name == "reset":
             self.locked, self.lock_reason, self.insert, self.message = False, "", False, ""

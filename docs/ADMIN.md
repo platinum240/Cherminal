@@ -372,8 +372,9 @@ names on the screen, such as `PF3=Exit` and `ENTER`, can be clicked; turn
 that off per session with `hotspots = false`.
 
 **Modern view.** Users can switch a 3270 or 5250 tab to Modern view: boxed
-input fields, click to move the cursor, and a bar of buttons for the keys
-the screen lists. It only changes how the screen is drawn and what the
+input fields, click to move the cursor, clickable menu options and list
+rows, typing errors explained beside the field, wheel paging, and a bar of
+buttons for the keys the screen lists. It only changes how the screen is drawn and what the
 mouse does; the data sent to the host is the same. A session's
 `view = "modern"` or `"classic"` picks how it starts, and the policy's
 `modern_view` turns it off or makes it the default for sessions that don't
@@ -479,6 +480,7 @@ default.
 | `resize_mode` | `"scale"` | `scale` (text fits the window) or `grow` (add rows and columns). |
 | `hotspots` | `true` | 3270: click key names such as `PF3=Exit` on the screen. |
 | `view` | site default | 3270/5250: `"classic"` or `"modern"` (boxed fields, click to move, key buttons). |
+| `modern_theme` | `"auto"` | Modern view colours: `"auto"` (Graphite or Paper, following the desktop), `"graphite"`, `"paper"`, or `"session"` for the session's own colours. |
 | `printer` | ask | CUPS printer to use without asking (and for 3287 printer sessions). |
 | `host_print` | `true` | VT: allow host passthrough printing. |
 | `keepalive` | `60` | Seconds between keep-alives; 0 = off. |

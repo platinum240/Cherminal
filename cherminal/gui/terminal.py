@@ -5,20 +5,43 @@ from __future__ import annotations
 import os
 import re
 import threading
+import time
 from dataclasses import replace
 
 from PyQt6.QtCore import QEvent, QObject, QRect, QRectF, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import (QClipboard, QColor, QCursor, QFont, QFontMetrics, QFontMetricsF,
-                         QGuiApplication, QKeyEvent, QMouseEvent, QPainter, QPen, QWheelEvent)
-from PyQt6.QtWidgets import (QApplication, QFileDialog, QInputDialog, QLineEdit, QMenu,
-                             QMessageBox, QProgressDialog, QWidget)
+from PyQt6.QtGui import (
+    QClipboard,
+    QColor,
+    QCursor,
+    QFont,
+    QFontMetrics,
+    QFontMetricsF,
+    QGuiApplication,
+    QKeyEvent,
+    QMouseEvent,
+    QPainter,
+    QPen,
+    QWheelEvent,
+)
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFileDialog,
+    QInputDialog,
+    QLineEdit,
+    QMenu,
+    QMessageBox,
+    QProgressDialog,
+    QWidget,
+)
 
 from .. import policy, system
+from ..emulation.choices import NONE as NO_CHOICES
+from ..emulation.choices import Choices, ListRow, MenuOption, find_choices
 from ..emulation.hotspots import ScreenKey, hotspot_at, screen_keys
 from ..keymap import Binding
 from ..screen import Attr
 from ..session import Session
-from .colors import ensure_contrast, resolve
+from .colors import ensure_contrast, modern_scheme, resolve
 from .keys import key_name, option_is_alt
 
 IDLE_CHECK_MS = 5000            # how often the idle timeout is checked
@@ -26,6 +49,19 @@ IDLE_WARNING = 60               # seconds of warning before an idle disconnect
 RETRY_DELAYS = (2, 5, 10, 20, 30, 60)   # seconds between reconnect attempts
 MAX_RETRIES = 10
 MODERN_LINE_SPACING = 1.3       # Modern view: rows a little apart, so fields have room
+WHEEL_PAGE_MS = 600             # Modern view: at most one page per this long from the wheel
+
+
+def _dark_desktop() -> bool:
+    """Is the desktop in a dark theme? (Modern view's "auto" theme follows it.)"""
+    app = QGuiApplication.instance()
+    if app is None:
+        return False
+    hints = QGuiApplication.styleHints()
+    scheme = getattr(hints, "colorScheme", None)
+    if scheme is not None and scheme() != Qt.ColorScheme.Unknown:
+        return scheme() == Qt.ColorScheme.Dark
+    return app.palette().window().color().lightness() < 128
 
 
 class _Bridge(QObject):
@@ -54,7 +90,7 @@ class TerminalWidget(QWidget):
         # browse and change the local disk.
         self.limited = limited
         self.colour_override: dict | None = None    # one-off colours, not saved
-        self.colors = resolve(session.profile)
+        self.colors = resolve(session.profile)       # set again once Modern view is known
         self._contrast_cache: dict = {}
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
@@ -67,6 +103,18 @@ class TerminalWidget(QWidget):
         emu = session.emulation
         self.can_be_modern = emu.block_mode and not emu.printer
         self.modern = self.can_be_modern and policy.current().modern(session.profile.view)
+        emu.soft_errors = self.modern
+        self.choices: Choices = NO_CHOICES          # clickable menu options and list rows
+        self._choice: MenuOption | ListRow | None = None    # the one under the mouse
+        self._choice_press: MenuOption | ListRow | None = None
+        self._swallow_release = False
+        self._wheel = 0                             # wheel travel not yet turned into a page
+        self._wheel_at = 0.0
+        self.colors = self._resolve_colors()
+        if self.can_be_modern:
+            hints = QGuiApplication.styleHints()
+            if hasattr(hints, "colorSchemeChanged"):       # Qt 6.5+: the desktop went dark/light
+                hints.colorSchemeChanged.connect(lambda _=None: self._refresh_colors())
         self.set_base_font(session.profile.font_family, session.profile.font_size)
 
         self.scroll_offset = 0                 # lines scrolled back into history
@@ -82,7 +130,7 @@ class TerminalWidget(QWidget):
         # Block-mode screens: PF3=Exit and the like can be clicked.
         self.hotspots = (session.emulation.block_mode and session.profile.hotspots
                          and not session.emulation.printer)
-        self.setMouseTracking(self.hotspots)
+        self.setMouseTracking(self.hotspots or self.modern)
         self._hot: tuple[int, int, int, str] | None = None     # row, start, end, action
         self._hot_press: tuple[int, int, int, str] | None = None
         self._uploading = False
@@ -159,9 +207,45 @@ class TerminalWidget(QWidget):
         if on == self.modern:
             return
         self.modern = on
+        self.session.emulation.soft_errors = on
+        self.session.emulation.field_error = None
+        self.setMouseTracking(self.hotspots or on)
+        self._refresh_colors()
+        self._update_choices()
         self.set_font(self.base_family, self.base_size)
         self._apply_resize()
         self.screen_changed.emit()
+
+    def _resolve_colors(self):
+        """The session's colours, or in Modern view its theme's. One-off
+        colours from Colours for this session... win over both."""
+        profile = self.session.profile
+        if self.colour_override:
+            return resolve(replace(profile, **self.colour_override))
+        scheme = modern_scheme(profile.modern_theme, _dark_desktop()) if self.modern else None
+        if scheme is None:
+            return resolve(profile)
+        return resolve(replace(profile, color_scheme=scheme, fg_color="", bg_color="",
+                               cursor_color="", min_contrast=0))
+
+    def _refresh_colors(self) -> None:
+        self.colors = self._resolve_colors()
+        self._contrast_cache.clear()
+        self.update()
+
+    def _update_choices(self) -> None:
+        """Find the menu options and list rows on the current screen (Modern view)."""
+        if not self.modern:
+            self.choices, self._choice = NO_CHOICES, None
+            return
+        with self.session.lock:
+            s = self.session.screen
+            lines = [self._line_text(line) for line in s.lines]
+            fields = self.session.emulation.input_fields()
+        self.choices = find_choices(lines, fields)
+        if self._choice is not None and self._choice not in (*self.choices.options,
+                                                             *self.choices.rows):
+            self._choice = None
 
     def screen_keys(self) -> list[ScreenKey]:
         """The keys the current screen lists (F3=Exit...), for the key bar."""
@@ -184,6 +268,32 @@ class TerminalWidget(QWidget):
             self.session.run_binding(Binding("action", action))
             self._on_update()
         self.setFocus()
+
+    def pick(self, choice: MenuOption | ListRow, send: bool = False) -> None:
+        """Modern view: a click on a menu option types its number into the
+        option field; on a list row it puts the cursor in the row's field.
+        With ``send`` (a double-click) the option, or the screen's select
+        code for a row, is typed and Enter pressed. A row whose screen names
+        no safe select code only gets the cursor: nothing is sent."""
+        emu, cols = self.session.emulation, self.session.screen.cols
+        self.session.touch()
+        if isinstance(choice, MenuOption):
+            field, code = self.choices.command, choice.code
+        else:
+            field, code = choice.field, (self.choices.select if send else "")
+        if field is None:
+            return
+        with self.session.lock:
+            if not emu.click(field.row * cols + field.col):
+                return
+            if code:
+                emu.do_action("erase-eof")
+                emu.type_text(code)
+                if isinstance(choice, ListRow):
+                    emu.click(field.row * cols + field.col)   # stay on the row
+        if send and code:
+            self.session.run_binding(Binding("action", "enter"))
+        self._on_update()
 
     def sizeHint(self):
         return QSize(self.cw * self.session.screen.cols, self.ch * self.session.screen.rows)
@@ -274,6 +384,7 @@ class TerminalWidget(QWidget):
         if self.hotspots and self.underMouse():
             self._hover(self.mapFromGlobal(QCursor.pos()))      # the screen changed under it
         if self.modern:
+            self._update_choices()
             self.screen_changed.emit()
         title = self.session.screen.title
         if title != self._last_title:
@@ -452,10 +563,7 @@ class TerminalWidget(QWidget):
     def set_colour_override(self, settings: dict | None) -> None:
         """Colours for this window only; None goes back to the session's."""
         self.colour_override = settings
-        profile = self.session.profile
-        self.colors = resolve(replace(profile, **settings) if settings else profile)
-        self._contrast_cache.clear()
-        self.update()
+        self._refresh_colors()
 
     # ---------------------------------------------------------- context menu
 
@@ -676,7 +784,37 @@ class TerminalWidget(QWidget):
         self.update()
 
     def wheelEvent(self, event: QWheelEvent) -> None:
+        if self.modern and self._can_page():
+            self._wheel_page(event.angleDelta().y())
+            return
         self.scroll_by(event.angleDelta().y() // 40)
+
+    def _can_page(self) -> bool:
+        """Does this screen page? Only then does the wheel press PageUp/PageDown
+        (PF7/PF8, Roll Down/Up), so it never sends keys a screen ignores."""
+        keys = {k.action for k in self.screen_keys()}
+        if keys & {"pf7", "pf8"}:
+            return True
+        with self.session.lock:
+            s = self.session.screen
+            bottom = " ".join(self._line_text(line) for line in s.lines[-6:])
+        return bool(re.search(r"\bMore\.\.\.|\bMore:\s*[+-]|\bBottom\b", bottom))
+
+    def _wheel_page(self, delta: int) -> None:
+        """One page per notch, and no faster than one per WHEEL_PAGE_MS, so a
+        flick of the wheel can't send a burst of requests."""
+        self._wheel += delta
+        if abs(self._wheel) < 120:
+            return
+        key = "PageUp" if self._wheel > 0 else "PageDown"
+        self._wheel = 0
+        now = time.monotonic()
+        if now - self._wheel_at < WHEEL_PAGE_MS / 1000 or getattr(
+                self.session.emulation, "locked", False):
+            return
+        self._wheel_at = now
+        self.session.key(key)
+        self._on_update()
 
     # ------------------------------------------------------------ selection
 
@@ -704,17 +842,27 @@ class TerminalWidget(QWidget):
             spot = hotspot_at(self._line_text(s.lines[row]), col)
         return (row, spot.start, spot.end, spot.action) if spot else None
 
+    def _choice_at(self, pos) -> MenuOption | ListRow | None:
+        """The menu option or list row under ``pos`` (Modern view)."""
+        if not self.modern or self.scroll_offset:
+            return None
+        x, y = int(pos.x()) - self.offset_x, int(pos.y()) - self.offset_y
+        if x < 0 or y < 0:
+            return None
+        return self.choices.at(y // self.ch, x // self.cw)
+
     def _hover(self, pos) -> None:
         hot = self._hotspot(pos)
-        if hot != self._hot:
-            self._hot = hot
-            self.setCursor(Qt.CursorShape.PointingHandCursor if hot
+        choice = None if hot else self._choice_at(pos)
+        if hot != self._hot or choice != self._choice:
+            self._hot, self._choice = hot, choice
+            self.setCursor(Qt.CursorShape.PointingHandCursor if hot or choice
                            else Qt.CursorShape.IBeamCursor)
             self.update()
 
     def leaveEvent(self, event) -> None:
-        if self._hot:
-            self._hot = None
+        if self._hot or self._choice:
+            self._hot = self._choice = None
             self.setCursor(Qt.CursorShape.IBeamCursor)
             self.update()
         super().leaveEvent(event)
@@ -724,6 +872,7 @@ class TerminalWidget(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             plain = event.modifiers() == Qt.KeyboardModifier.NoModifier
             self._hot_press = self._hotspot(event.position()) if plain else None
+            self._choice_press = self._choice_at(event.position()) if plain else None
             self.match = None
             self.sel_start = self.sel_end = self._cell_at(event.position())
             self.update()
@@ -735,17 +884,26 @@ class TerminalWidget(QWidget):
         if self.sel_start is not None and event.buttons() & Qt.MouseButton.LeftButton:
             self.sel_end = self._cell_at(event.position())
             self.update()
-        elif self.hotspots and not event.buttons():
+        elif (self.hotspots or self.modern) and not event.buttons():
             self._hover(event.position())
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         press, self._hot_press = self._hot_press, None
+        choice, self._choice_press = self._choice_press, None
+        if self._swallow_release:               # the end of a double-click on a choice
+            self._swallow_release = False
+            return
         if (press and event.button() == Qt.MouseButton.LeftButton and not self._sel_range()
                 and self._hotspot(event.position()) == press):
             # A click (not a drag to select) on a key name presses that key.
             self.clear_selection()
             self.session.run_binding(Binding("action", press[3]))
             self._on_update()
+            return
+        if (choice and event.button() == Qt.MouseButton.LeftButton and not self._sel_range()
+                and self._choice_at(event.position()) == choice):
+            self.clear_selection()
+            self.pick(choice)
             return
         if (self.modern and event.button() == Qt.MouseButton.LeftButton
                 and not self._sel_range() and self.scroll_offset == 0):
@@ -761,6 +919,13 @@ class TerminalWidget(QWidget):
             QGuiApplication.clipboard().setText(text, QClipboard.Mode.Selection)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        choice = self._choice_at(event.position()) if event.button() == \
+            Qt.MouseButton.LeftButton else None
+        if choice is not None:
+            self.clear_selection()
+            self.pick(choice, send=True)
+            self._swallow_release = True
+            return
         line_no, col = self._cell_at(event.position())
         lines = self._all_lines()
         if line_no >= len(lines):
@@ -861,6 +1026,7 @@ class TerminalWidget(QWidget):
                     y = row * self.ch + self.ch - 1
                     p.drawLine(start * self.cw, y, end * self.cw - 1, y)
             if self.modern and self.scroll_offset == 0:
+                self._paint_choice(p)
                 self._paint_fields(p, s)
             if s.cursor_visible and self.scroll_offset == 0:
                 rect = QRect(s.x * self.cw, s.y * self.ch, self.cw, self.ch)
@@ -878,21 +1044,64 @@ class TerminalWidget(QWidget):
 
     def _paint_fields(self, p: QPainter, s) -> None:
         """Modern view: a rounded box round each input field, a focus ring
-        round the one holding the cursor."""
+        round the one holding the cursor, a dot on fields changed since the
+        host sent them, and the reason a key was refused."""
         sch = self.colors
         border = QColor(*(round(a * 0.45 + b * 0.55) for a, b in zip(sch.fg, sch.bg)))
         focus = QColor(*sch.cursor)
+        alert = QColor(*ensure_contrast(sch.palette[9], sch.bg, 4.5))       # red
+        changed = QColor(*ensure_contrast((230, 150, 0), sch.bg, 3.0))      # amber
         cursor = (s.y, s.x)
+        emu = self.session.emulation
+        error = divmod(emu.field_error[0], s.cols) if emu.field_error else None
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setBrush(Qt.BrushStyle.NoBrush)
         pad = max(2.0, self.cw * 0.25)
-        for f in self.session.emulation.input_fields():
+        for f in emu.input_fields():
             box = QRectF(f.col * self.cw - pad, f.row * self.ch + 1.5,
                          f.length * self.cw + 2 * pad, self.ch - 3)
             has_cursor = f.row == cursor[0] and f.col <= cursor[1] < f.col + f.length
-            p.setPen(QPen(focus if has_cursor else border, 2 if has_cursor else 1))
+            bad = error is not None and error[0] == f.row and f.col <= error[1] < f.col + f.length
+            p.setPen(QPen(alert if bad else focus if has_cursor else border,
+                          2 if bad or has_cursor else 1))
             p.drawRoundedRect(box, 4, 4)
+            if f.modified and not bad:
+                # Changed here: this field goes to the host with the next Enter.
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(changed)
+                p.drawEllipse(QRectF(box.right() - 3, box.top() - 3, 6, 6))
+                p.setBrush(Qt.BrushStyle.NoBrush)
+            if bad:
+                self._paint_hint(p, box, emu.field_error[1], alert, s.rows)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+
+    def _paint_hint(self, p: QPainter, box: QRectF, text: str, colour: QColor,
+                    rows: int) -> None:
+        """A small label under the field (over it on the last row) saying why
+        a key was refused, in place of a locked keyboard."""
+        font = QFont(self.font())
+        font.setPointSizeF(max(7.0, self.term_font.pointSizeF() * 0.8))
+        fm = QFontMetricsF(font)
+        w, h = fm.horizontalAdvance(text) + 12, fm.height() + 4
+        below = box.bottom() + 2 + h <= rows * self.ch
+        label = QRectF(box.left(), box.bottom() + 2 if below else box.top() - 2 - h, w, h)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(colour)
+        p.drawRoundedRect(label, 4, 4)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.setFont(font)
+        p.setPen(QColor(*self.colors.bg))
+        p.drawText(label, Qt.AlignmentFlag.AlignCenter, text)
+
+    def _paint_choice(self, p: QPainter) -> None:
+        """A soft band behind the menu option or list row under the mouse."""
+        c = self._choice
+        if c is None:
+            return
+        tint = QColor(*self.colors.fg)
+        tint.setAlpha(28)
+        p.fillRect(QRectF(c.start * self.cw - 3, c.row * self.ch, (c.end - c.start) * self.cw + 6,
+                          self.ch), tint)
 
     def _paint_line(self, p: QPainter, row: int, line_no: int, line, screen_reverse: bool) -> None:
         y = row * self.ch

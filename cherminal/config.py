@@ -25,6 +25,7 @@ TRANSPORTS = ("ssh", "telnet", "serial", "local")
 DEFAULT_PORTS = {"ssh": 22, "telnet": 23}
 OPTION_KEYS = ("alt", "left-alt", "text")
 VIEWS = ("", "classic", "modern")      # "" = what the site policy says (classic if nothing)
+MODERN_THEMES = ("auto", "graphite", "paper", "session")
 
 
 PALETTE_NAMES = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
@@ -110,6 +111,8 @@ class SessionProfile:
     log_keep: int = 2                 # older log files kept; older ones are deleted
     hotspots: bool = True             # 3270: click PF3=Exit and other key names on screen
     view: str = ""                    # 3270/5250: "classic" or "modern"; "" = site default
+    modern_theme: str = "auto"        # Modern view colours: auto (follows the desktop),
+                                      # graphite, paper, or session (its own colours)
     keys: dict[str, str] = field(default_factory=dict)
     macros: dict[str, str] = field(default_factory=dict)
 
@@ -124,6 +127,8 @@ class SessionProfile:
             raise ValueError(f"option_key must be one of {', '.join(OPTION_KEYS)}")
         if self.view not in VIEWS:
             raise ValueError("view must be classic or modern")
+        if self.modern_theme not in MODERN_THEMES:
+            raise ValueError(f"modern_theme must be one of {', '.join(MODERN_THEMES)}")
         if not 0 <= self.port <= 65535:
             raise ValueError("port must be between 1 and 65535 (0 = the usual port)")
         if self.enter_sends not in ("cr", "crlf", "lf"):
