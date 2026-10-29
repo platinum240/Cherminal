@@ -62,8 +62,16 @@ rm -rf "$stage" && mkdir -p "$stage"
 cp -R "$app" "$stage/"
 ln -s /Applications "$stage/Applications"
 rm -f "dist/$name.dmg"
-hdiutil create -quiet -volname "Cherminal $version" -srcfolder "$stage" \
-    -fs HFS+ -format UDZO "dist/$name.dmg"
+# hdiutil sometimes fails with "Resource busy" while macOS still holds the
+# staged files (seen on CI runners); try again a few times before giving up.
+for attempt in 1 2 3 4; do
+    hdiutil create -quiet -volname "Cherminal $version" -srcfolder "$stage" \
+        -fs HFS+ -format UDZO "dist/$name.dmg" && break
+    [ "$attempt" = 4 ] && { echo "hdiutil create failed" >&2; exit 1; }
+    echo "hdiutil create failed, trying again ($attempt)" >&2
+    rm -f "dist/$name.dmg"
+    sleep $((attempt * 5))
+done
 [ -n "${CODESIGN_IDENTITY:-}" ] && codesign --timestamp --sign "$CODESIGN_IDENTITY" "dist/$name.dmg"
 
 # Installer package for /Applications.

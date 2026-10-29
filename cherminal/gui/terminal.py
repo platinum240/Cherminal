@@ -47,10 +47,15 @@ from ..emulation.navigation import (
     table_csv,
 )
 from ..keymap import Binding
+from ..layouts import FormView, Layout
+from ..layouts import find as find_layout
+from ..layouts import make as make_layout
+from ..layouts import view as layout_view
 from ..screen import Attr
 from ..session import Session
 from .colors import ensure_contrast, modern_scheme, resolve
 from .keys import key_name, option_is_alt
+from .layoutview import LayoutView, MakeLayoutDialog
 from .navbar import NavBar
 from .palette import CommandPalette, Item
 
@@ -95,6 +100,7 @@ class TerminalWidget(QWidget):
     message = pyqtSignal(str)                   # a passing note for the status bar
     find_requested = pyqtSignal()
     screen_changed = pyqtSignal()               # Modern view: the key bar may need updating
+    layouts_saved = pyqtSignal()                # a layout rule was saved: every tab reloads
     colours_requested = pyqtSignal()
 
     def __init__(self, session: Session, parent=None, limited: bool = False):
@@ -133,6 +139,15 @@ class TerminalWidget(QWidget):
         session.keep_history = self.modern
         self._pending: tuple[str, float] | None = None  # a transaction waiting on Clear
         self.nav = NavBar(self)
+        # Custom layouts: rules that redraw known screens as forms (Modern view).
+        self.layouts: list[Layout] = []
+        self.layout_errors: list[str] = []
+        self.matched: Layout | None = None          # the rule matching the live screen
+        self.form: FormView | None = None           # what the layout view shows
+        self.show_screen = False                    # the user asked for the plain screen
+        self.layout_view = LayoutView(self)
+        if self.can_be_modern:
+            self.reload_layouts()
         self.colors = self._resolve_colors()
         if self.can_be_modern:
             hints = QGuiApplication.styleHints()
@@ -264,17 +279,108 @@ class TerminalWidget(QWidget):
         """Find the menu options and list rows on the current screen (Modern view)."""
         if not self.modern:
             self.choices, self._choice = NO_CHOICES, None
+            self.matched = self.form = None
+            self.layout_view.hide()
             return
         with self.session.lock:
             s = self.session.screen
             lines = [self._line_text(line) for line in s.lines]
             fields = self.session.emulation.input_fields()
         self.choices = find_choices(lines, fields)
-        self.trail.visit(screen_title(lines, fields))
+        self.matched = find_layout(self.layouts, lines, self.session.profile.name)
+        self.trail.visit(self.matched.name if self.matched else screen_title(lines, fields))
+        self._show_layout(lines, fields)
         self.nav.refresh()
         if self._choice is not None and self._choice not in (*self.choices.options,
                                                              *self.choices.rows):
             self._choice = None
+
+    # ------------------------------------------------------ custom layouts
+
+    def reload_layouts(self) -> None:
+        """Read the layout rules again (after one is saved, or a share changed)."""
+        self.layouts, self.layout_errors = self.session.store.layouts()
+        if self.layout_errors:
+            self.message.emit(f"Layout rule skipped: {self.layout_errors[0]}")
+        self._update_choices()
+        self.update()
+
+    def _show_layout(self, lines: list[str], fields) -> None:
+        """Draw the live screen through its layout, or hide the form."""
+        if self.matched is None or self.show_screen or self.viewing is not None:
+            self.form = None
+            self.layout_view.hide()
+            return
+        appearing = self.layout_view.isHidden()
+        self.form = layout_view(self.matched, lines, fields)
+        self.layout_view.setGeometry(self._grid_area().adjusted(
+            -MODERN_PADDING + 1, -MODERN_PADDING + 1, MODERN_PADDING - 1, MODERN_PADDING - 1))
+        self.layout_view.show_form(self.form)
+        if appearing and self.hasFocus():
+            self.layout_view.focus_first()
+
+    def toggle_layout(self) -> None:
+        """Switch between the custom layout and the screen it is drawn from."""
+        self.show_screen = not self.show_screen
+        self._update_choices()
+        self.update()
+        if self.show_screen or self.form is None:
+            self.setFocus()
+        else:
+            self.layout_view.focus_first()
+
+    def layout_type(self, field, text: str) -> None:
+        """A layout's text box changed: put its text in the screen field."""
+        emu, cols = self.session.emulation, self.session.screen.cols
+        self.session.touch()
+        with self.session.lock:
+            if not emu.click(field.row * cols + field.col):
+                return
+            emu.do_action("erase-eof")
+            emu.type_text(text)
+        self._on_update()
+
+    def layout_focus(self, field) -> None:
+        """A layout's text box got the focus: the screen cursor follows."""
+        with self.session.lock:
+            self.session.emulation.click(field.row * self.session.screen.cols + field.col)
+        self._repaint.start()
+
+    def layout_row(self, row: int, select: tuple[int, str], send: bool = False) -> None:
+        """A click on a layout table row puts the cursor in its selection
+        field; a double-click types the rule's code there and presses Enter."""
+        emu, cols = self.session.emulation, self.session.screen.cols
+        pos = row * cols + select[0] - 1
+        self.session.touch()
+        with self.session.lock:
+            if not emu.click(pos):
+                return
+            if send:
+                emu.do_action("erase-eof")
+                emu.type_text(select[1])
+                emu.click(pos)
+        if send:
+            self.session.run_binding(Binding("action", "enter"))
+        self._on_update()
+
+    def screen_title_text(self) -> str:
+        with self.session.lock:
+            lines = [self._line_text(line) for line in self.session.screen.lines]
+            fields = self.session.emulation.input_fields()
+        return screen_title(lines, fields)
+
+    def make_layout(self) -> None:
+        """Make layout from this screen: a starting rule to edit and save."""
+        if self.limited:
+            return
+        with self.session.lock:
+            lines = [self._line_text(line) for line in self.session.screen.lines]
+            fields = self.session.emulation.input_fields()
+        dlg = MakeLayoutDialog(self, make_layout(lines, fields))
+        if dlg.exec() and dlg.saved:
+            self.layouts_saved.emit()
+            self.message.emit(f"Layout saved to {dlg.saved}")
+        self.setFocus()
 
     def screen_keys(self) -> list[ScreenKey]:
         """The keys the current screen lists (F3=Exit...), for the key bar."""
@@ -347,6 +453,8 @@ class TerminalWidget(QWidget):
         self.scroll_offset = 0
         self.clear_selection()
         self._hot = self._choice = None
+        self.form = None
+        self.layout_view.hide()
         self.nav.refresh()
         self.update()
         self.setFocus()
@@ -355,7 +463,7 @@ class TerminalWidget(QWidget):
         if self.viewing is not None:
             self.viewing = None
             self.clear_selection()
-            self.nav.refresh()
+            self._update_choices()
             self.update()
         self.setFocus()
 
@@ -451,6 +559,12 @@ class TerminalWidget(QWidget):
                               lambda: self.view_history(-1)))
         if self.viewing is not None:
             items.append(Item("Actions", "Back to live screen", "Esc", self.view_live))
+        if self.matched is not None:
+            items.append(Item("Actions", "Show layout" if self.show_screen else "Show screen",
+                              self.matched.name, self.toggle_layout))
+        if self.modern and not self.limited:
+            items.append(Item("Actions", "Make layout from this screen", "",
+                              self.make_layout))
         items.append(Item("Actions", "Print screen", "", self.print_screen))
         items.append(Item("Actions", "Search the screen", "", self.find_requested.emit))
         return items
@@ -527,6 +641,8 @@ class TerminalWidget(QWidget):
     def _apply_resize(self) -> None:
         top = self._top()
         self.nav.setGeometry(0, 0, self.width(), top)
+        self.layout_view.setGeometry(self._grid_area().adjusted(
+            -MODERN_PADDING + 1, -MODERN_PADDING + 1, MODERN_PADDING - 1, MODERN_PADDING - 1))
         if self.command_palette is not None:
             self.command_palette._place()
         if self.resize_mode == "scale" or self.session.emulation.fixed_size:

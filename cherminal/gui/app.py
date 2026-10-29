@@ -116,6 +116,8 @@ class MainWindow(QMainWindow):
                                            "mac:palette")
         self.history_action = self._action(v, "Screen &history",
                                            lambda: self._term() and self._term().view_history(-1))
+        self.make_layout_action = self._action(
+            v, "Make &layout from this screen…", lambda: self._term() and self._term().make_layout())
         # The button names the view it switches to; the menu item is a tick.
         self.modern_button = QToolButton(text="Modern view", autoRaise=True)
         self.modern_button.clicked.connect(self.modern_action.trigger)
@@ -184,6 +186,7 @@ class MainWindow(QMainWindow):
         term.colours_requested.connect(self.session_colours)
         term.message.connect(lambda text: self.statusBar().showMessage(text, 8000))
         term.palette_extra = self._palette_items
+        term.layouts_saved.connect(self.reload_layouts)
         idx = self.tabs.addTab(term, profile.name)
         term.title_changed.connect(lambda t, w=term: self._set_tab_title(w, t))
         term.status_changed.connect(lambda text, w=term: self._set_status(w, text))
@@ -293,6 +296,7 @@ class MainWindow(QMainWindow):
         for act in (self.palette_action, self.copy_screen_action, self.export_action):
             act.setVisible(block)
         self.history_action.setVisible(bool(term and term.modern))
+        self.make_layout_action.setVisible(bool(term and term.modern) and not self.limited)
 
     def _label_modern_button(self) -> None:
         to_classic = self.modern_action.isChecked()
@@ -300,6 +304,13 @@ class MainWindow(QMainWindow):
         self.modern_button.setToolTip(
             f"Switch to {'Classic' if to_classic else 'Modern'} view "
             f"({self.modern_action.shortcut().toString()})")
+
+    def reload_layouts(self) -> None:
+        """A layout rule was saved: every 3270/5250 tab uses it straight away."""
+        for i in range(self.tabs.count()):
+            term = self.tabs.widget(i)
+            if term.can_be_modern:
+                term.reload_layouts()
 
     def open_palette(self) -> None:
         term = self._term()
@@ -334,6 +345,7 @@ class MainWindow(QMainWindow):
             term.set_modern(self.modern_action.isChecked())
             self.keybar.refresh()
             self.history_action.setVisible(term.modern)
+            self.make_layout_action.setVisible(term.modern and not self.limited)
             term.setFocus()
         self._label_modern_button()
 

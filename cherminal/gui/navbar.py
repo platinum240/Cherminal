@@ -52,7 +52,8 @@ class NavBar(QWidget):
             snap = history[term.viewing]
             state = ("history", term.viewing, len(history), snap.title)
         else:
-            state = ("live", tuple(term.trail.titles), len(history))
+            state = ("live", tuple(term.trail.titles), len(history),
+                     term.matched.name if term.matched else "", term.show_screen)
         if state != self._shown:
             self._shown = state
             self._clear()
@@ -96,6 +97,10 @@ class NavBar(QWidget):
             else:
                 self.lay.addWidget(QLabel(title, self))
         self.lay.addStretch(1)
+        if term.matched is not None:
+            self._button("Show layout" if term.show_screen else "Show screen",
+                         term.toggle_layout,
+                         f"Switch between the {term.matched.name} layout and the screen")
         if has_history:
             self._button("History", lambda: term.view_history(-1),
                          "Screens from this session, kept in memory only")

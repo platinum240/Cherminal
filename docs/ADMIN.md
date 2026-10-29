@@ -30,7 +30,7 @@ For Macs (folders, Jamf and managed preferences, signing), see
 | Site policy | `/etc/cherminal/policy.toml` (fixed path) | You (root) |
 | Shared sessions and keymaps | `/etc/xdg/cherminal/`, `cherminal-config/` next to the AppImage, or folders in `$CHERMINAL_SITE_DIR` | You |
 | Trusted SSH host keys | `/etc/ssh/ssh_known_hosts`, and `known_hosts` in any shared folder | You |
-| A user's own sessions and keymaps | `~/.config/cherminal/sessions/`, `~/.config/cherminal/keymaps/` | The user |
+| A user's own sessions, keymaps and layouts | `~/.config/cherminal/sessions/`, `keymaps/`, `layouts/` | The user |
 | SSH host keys a user accepted | `~/.config/cherminal/known_hosts` | Cherminal |
 | Session logs | `~/.local/state/cherminal/logs/`, or the policy's `log_dir` | Cherminal |
 | Audit log | syslog / journald, tag `cherminal` | Cherminal |
@@ -85,8 +85,9 @@ name wins:
    with it;
 3. `/etc/xdg/cherminal/` (each folder in `$XDG_CONFIG_DIRS`).
 
-Each folder may hold `*.cherminal` files, plus `sessions/` and `keymaps/`
-folders laid out like `~/.config/cherminal`, and a `known_hosts` file
+Each folder may hold `*.cherminal` files, plus `sessions/`, `keymaps/` and
+`layouts/` ([custom layouts](#custom-layouts)) folders laid out like
+`~/.config/cherminal`, and a `known_hosts` file
 ([section 7](#7-ssh-host-keys)). If a user edits a shared session, their
 copy is saved in their own folder and shown as `[shared, edited here]`;
 deleting it brings the shared one back. To stop users editing at all, use
@@ -385,6 +386,64 @@ mouse does; the data sent to the host is the same. A session's
 `view = "modern"` or `"classic"` picks how it starts, and the policy's
 `modern_view` turns it off or makes it the default for sessions that don't
 choose.
+
+### Custom layouts
+
+A layout rule redraws one screen your users rely on as a form. It is a
+TOML file in a `layouts/` folder: the user's own
+(`~/.config/cherminal/layouts/`) or a shared setup folder's, so you can
+write it once for everyone ([section 3](#3-sharing-sessions-and-keymaps)).
+A user's file with the same name wins over a shared one. A rule only
+changes what Modern view draws; the host receives the same keys and field
+data, and a screen no rule matches keeps the generic Modern view, so a
+missing or wrong rule never breaks a screen. A rule file with a mistake is
+skipped, and the status bar says why.
+
+The quickest start is View › **Make layout from this screen…** on the
+screen itself: it writes a rule from the screen's fields, `Label . . .
+value` lines and tables, which you then adjust.
+
+```toml
+# layouts/customer-inquiry.toml. Rows and columns count from 1.
+[screen]
+name = "Customer inquiry"                      # shown on the breadcrumb
+match = [{ row = 1, col = 3, text = "CUST01" }]  # all must be on the screen;
+                                               # leave out col to match anywhere on the row
+title = { row = 5, col = 22, len = 30 }        # optional: the big title (else the name)
+subtitle = { row = 7, col = 22, len = 30 }     # optional
+# session = "CICS production"                  # optional: only for this session
+
+[[field]]                                      # an input field, drawn as a text box
+label = "Customer no."
+at = { row = 4, col = 23, len = 10 }
+place = "header"                               # beside the title; default "body"
+
+[[value]]                                      # text shown read-only
+label = "Status"
+at = { row = 8, col = 22, len = 8 }
+card = "Account"                               # values with the same card go together
+badges = { ACTIVE = "good", HOLD = "warn", CLOSED = "muted" }
+
+[[value]]
+label = "Credit used"
+at = { row = 9, col = 22, len = 12 }
+card = "Credit"
+kind = "money"                                 # text, money, number or badge
+
+[[table]]
+title = "Recent orders"
+rows = "12-15"                                 # the data rows, not the heading
+select = { col = 3, action = "S" }             # the row's selection field and its code
+columns = ["Order", "Date", "Amount:money", "Status:badge"]
+badges = { SHIPPED = "good", OPEN = "warn", INVOICED = "info", PAID = "muted" }
+```
+
+Badge colours are `good`, `warn`, `bad`, `info` and `muted`. Columns are
+found from where the rows' text lines up; when that isn't reliable, place
+them yourself: `columns = [{ name = "Order", col = 7, len = 10 }, ...]`.
+With `select`, a click on a row puts the cursor in its selection field and
+a double-click types the code and presses Enter, so only give a code that
+opens or displays a row.
 
 **Other ports.** Some TN3270 servers offer extra ports that skip the
 front screen and go straight to an application or a submenu (for example

@@ -257,6 +257,10 @@ class ProfileStore:
     def keymaps_dir(self) -> Path:
         return self.root / "keymaps"
 
+    @property
+    def layouts_dir(self) -> Path:
+        return self.root / "layouts"
+
     # ------------------------------------------------------- site folders
 
     def _site(self) -> tuple[dict[str, SessionProfile], dict[str, dict]]:
@@ -395,6 +399,39 @@ class ProfileStore:
             km.update({"KeypadEnter": pad, "kp:KeypadEnter": pad})
         km.update(profile.keys)
         return km
+
+    # --------------------------------------------------------------- layouts
+
+    def layouts(self) -> tuple[list, list[str]]:
+        """Custom layout rules from the site folders' ``layouts/`` and the
+        user's, a user file shadowing a shared one of the same name, and the
+        problems with any that can't be used (they are skipped)."""
+        from .layouts import LayoutError, load
+        by_name, errors = {}, []
+        for root in [*reversed(self.site_roots), self.root]:
+            for path in sorted((root / "layouts").glob("*.toml")):
+                try:
+                    by_name[path.stem] = load(path)
+                except (OSError, LayoutError) as e:
+                    errors.append(str(e))
+                    by_name.pop(path.stem, None)
+        return [by_name[k] for k in sorted(by_name)], errors
+
+    def save_layout(self, name: str, text: str) -> Path:
+        """Save a rule (TOML text) in the user's layouts folder; LayoutError if
+        it isn't a usable rule."""
+        from .layouts import LayoutError, parse
+        try:
+            data = tomllib.loads(text)
+        except tomllib.TOMLDecodeError as e:
+            raise LayoutError(str(e)) from e
+        parse(data, f"{slugify(name)}.toml")
+        self.layouts_dir.mkdir(parents=True, exist_ok=True)
+        path = self.layouts_dir / f"{slugify(name)}.toml"
+        tmp = path.with_suffix(".toml.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+        return path
 
     # --------------------------------------------------------------- bundles
 
