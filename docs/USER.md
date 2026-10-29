@@ -131,6 +131,21 @@ the tabs, gives a 3270 or 5250 screen a more familiar look:
 - A **key bar** under the screen has a button for each key the screen
   lists (`F3=Exit` becomes **Exit**, with F3 beside it), **More keys** for
   PA1, Clear, Attention and the rest, and **Send** for Enter.
+- **Menus and lists are clickable.** Click a numbered menu option to type
+  its number on the `Option ===>` line, or double-click it to choose it
+  straight away. On a list with a selection column, click a row to put the
+  cursor beside it; double-click it to open it when the screen offers a
+  code that only looks (`S`, `1=Select`, `5=Display`). A double-click never
+  types a code that changes or deletes anything.
+- **Typing mistakes are explained** under the field ("Numbers only in this
+  field", "Fill in this field before pressing Enter") instead of locking
+  the keyboard, and fields you have changed but not sent yet carry a small
+  amber dot.
+- **The scroll wheel pages** through screens that page with PF7/PF8 or
+  Roll up/down, one page per notch.
+- The screen uses the **Graphite** (dark) or **Paper** (light) colours,
+  following your desktop. Pick one, or keep the session's own colours,
+  with Terminal › **Modern view colours** in the session.
 
 Every key works the same in both views, and the host can't tell them
 apart. The switch changes the open tab; to start a session in Modern view

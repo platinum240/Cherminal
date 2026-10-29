@@ -47,6 +47,10 @@ SCHEMES = {s.name: s for s in (
     Scheme("high-contrast-light", (0, 0, 0), (255, 255, 255), (0, 0, 0), (0, 0, 200), 7.0),
     Scheme("yellow-on-black", (255, 255, 0), (0, 0, 0), (255, 255, 160), (255, 255, 255), 7.0),
     Scheme("black-on-yellow", (0, 0, 0), (255, 255, 160), (0, 0, 0), (0, 0, 200), 7.0),
+    # Modern view's themes: softer than black and white, with every host
+    # colour held to WCAG AA so red still reads as red on either.
+    Scheme("graphite", (226, 228, 233), (35, 38, 45), (255, 255, 255), (110, 160, 255), 4.5),
+    Scheme("paper", (32, 35, 43), (250, 250, 248), (0, 0, 0), (47, 107, 216), 4.5),
 )}
 
 
@@ -108,6 +112,15 @@ class Colors:
     cursor: RGB
     palette: tuple[RGB, ...]
     min_contrast: float
+
+
+def modern_scheme(theme: str, dark_desktop: bool) -> str | None:
+    """The scheme Modern view paints with; None keeps the session's own."""
+    if theme == "session":
+        return None
+    if theme == "auto":
+        return "graphite" if dark_desktop else "paper"
+    return theme
 
 
 def resolve(profile) -> Colors:

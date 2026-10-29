@@ -285,6 +285,7 @@ class IBM5250(Emulation):
 
     def process(self, rec: bytes) -> None:
         """Run one Telnet record: one or more GDS records."""
+        self.field_error = None                 # a new screen from the host
         while len(rec) >= HEADER_LEN and rec[2:4] == RECORD_TYPE:
             length = int.from_bytes(rec[0:2], "big")
             if not HEADER_LEN <= length <= len(rec):
@@ -649,8 +650,13 @@ class IBM5250(Emulation):
 
     # -------------------------------------------------------- keyboard
 
-    def _error(self, reason: str) -> bool:
-        """An operator error: input is inhibited until Reset, as on a real 5250."""
+    def _error(self, reason: str, pos: int | None = None, hint: str = "") -> bool:
+        """An operator error: input is inhibited until Reset, as on a real 5250.
+        In Modern view a field rule (``hint``) shows beside the field instead."""
+        if self.soft_errors and hint and pos is not None:
+            self.field_error, self.message = (pos, hint), reason
+            self._render()
+            return False
         self.inhibited = reason
         self.on_bell()
         self._render()
@@ -677,6 +683,7 @@ class IBM5250(Emulation):
         self._render()
 
     def _type_char(self, ch: str) -> bool:
+        self.field_error = None
         if not self._can_type():
             return False
         pos = self.cursor
@@ -689,9 +696,12 @@ class IBM5250(Emulation):
             return self._error("Field Exit key required")
         allowed = VALID_CHARS.get(f.shift)
         if allowed is not None and ch not in allowed:
-            return self._error({SHIFT_ALPHA_ONLY: "Alphabetic only field",
-                                SHIFT_NUMERIC_ONLY: "Numeric only field"}.get(
-                f.shift, "Digits only field"))
+            reason, hint = {SHIFT_ALPHA_ONLY: ("Alphabetic only field",
+                                               "Letters only in this field"),
+                            SHIFT_NUMERIC_ONLY: ("Numeric only field",
+                                                 "Numbers only in this field")}.get(
+                f.shift, ("Digits only field", "Digits only in this field"))
+            return self._error(reason, pos, hint)
         if f.ffw & FFW_MONOCASE:
             ch = ch.upper()
         try:
@@ -732,6 +742,7 @@ class IBM5250(Emulation):
 
     def do_action(self, name: str) -> bool:
         """Run a 5250 key; returns False for names this emulation does not know."""
+        self.field_error = None
         if name not in ("reset", "insert"):
             self._fer_at = None                  # any other key ends "Field Exit required"
         n = self.size
@@ -870,11 +881,12 @@ class IBM5250(Emulation):
                 filled = [self.buf[p] not in (NULL,) for p in f.data]
                 if f.ffw & FFW_ME and not f.mdt:
                     self.cursor = f.start
-                    self._error("Mandatory enter field")
+                    self._error("Mandatory enter field", f.start,
+                                "Fill in this field before pressing Enter")
                     return
                 if f.adjust == MANDATORY_FILL and f.mdt and not all(filled):
                     self.cursor = f.start
-                    self._error("Mandatory fill field")
+                    self._error("Mandatory fill field", f.start, "Fill this field completely")
                     return
         self._send_fields(aid, self.read_cmd)
         self.read_cmd = None

@@ -58,6 +58,10 @@ class Emulation:
                  encoding: str = "utf-8", answerback: str = ""):
         self.screen = screen
         self.reply = reply or (lambda data: None)
+        # Block mode, Modern view: a key a field doesn't accept shows a hint
+        # beside it, (position, text), instead of beeping or inhibiting input.
+        self.soft_errors = False
+        self.field_error: tuple[int, str] | None = None
         self.answerback = answerback
         self.encoding = encoding
         self._decoder = codecs.getincrementaldecoder(encoding)(errors="replace")

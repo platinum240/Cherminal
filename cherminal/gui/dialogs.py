@@ -527,9 +527,17 @@ class SessionEditor(QDialog):
         self.view.setToolTip("How IBM 3270 and 5250 screens look. Modern view boxes the input "
                              "fields, moves the cursor where you click and shows the screen's "
                              "keys as buttons. View › Modern view switches an open tab.")
+        self.modern_theme = QComboBox()
+        for label, data in (("Follow the desktop (Graphite or Paper)", "auto"),
+                            ("Graphite (dark)", "graphite"), ("Paper (light)", "paper"),
+                            ("This session's colours", "session")):
+            self.modern_theme.addItem(label, data)
+        self.modern_theme.setToolTip("Colours in Modern view. Host colours keep their hue "
+                                     "and are made readable on the theme.")
         if policy.current().modern_view == "off":
             self.view.setEnabled(False)
             self.view.setToolTip("Modern view is turned off on this computer.")
+            self.modern_theme.setEnabled(False)
         self.enter_sends = QComboBox()
         self.enter_sends.addItems(["cr", "crlf", "lf"])
         self.resize_mode = QComboBox()
@@ -542,7 +550,8 @@ class SessionEditor(QDialog):
                               ("Answerback", self.answerback), ("Enter sends", self.enter_sends),
                               ("When the window resizes", self.resize_mode),
                               ("", self.local_echo), ("", self.hotspots),
-                              ("IBM 3270/5250 view", self.view)):
+                              ("IBM 3270/5250 view", self.view),
+                              ("Modern view colours", self.modern_theme)):
             f.addRow(label, widget)
         return w
 
@@ -807,6 +816,7 @@ class SessionEditor(QDialog):
         self.local_echo.setChecked(p.local_echo)
         self.hotspots.setChecked(p.hotspots)
         self.view.setCurrentIndex(max(0, self.view.findData(p.view)))
+        self.modern_theme.setCurrentIndex(max(0, self.modern_theme.findData(p.modern_theme)))
         self.enter_sends.setCurrentText(p.enter_sends)
         self.resize_mode.setCurrentIndex(max(0, self.resize_mode.findData(p.resize_mode)))
         self.keymap.setCurrentIndex(max(0, self.keymap.findData(p.keymap)))
@@ -860,6 +870,7 @@ class SessionEditor(QDialog):
             option_key=self.option_key.currentData(),
             answerback=self.answerback.text(), local_echo=self.local_echo.isChecked(),
             hotspots=self.hotspots.isChecked(), view=self.view.currentData(),
+            modern_theme=self.modern_theme.currentData(),
             enter_sends=self.enter_sends.currentText(),
             resize_mode=self.resize_mode.currentData(), printer=self._printer_name(),
             host_print=self.host_print.isChecked(), idle_timeout=self.idle_timeout.value(),

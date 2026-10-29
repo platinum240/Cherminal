@@ -5,6 +5,11 @@ Check what you are running with `cherminal --version` (or
 
 ## Unreleased
 
+- Modern view, part 2: Graphite and Paper colours that follow the
+  desktop (`modern_theme`); typing mistakes are explained under the field
+  instead of locking the keyboard, and changed fields get a dot; numbered
+  menu options and list rows can be clicked (double-click to choose, and
+  only with a code that views a row); the scroll wheel pages with PF7/PF8.
 - AppImage: starts on desktops without the xcb-util libraries ("xcb-cursor0
   or libxcb-cursor0 is needed to load the Qt xcb platform plugin"). The
   libraries Qt's X11 plugin needs now ship inside the AppImage.
