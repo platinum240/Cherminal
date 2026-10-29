@@ -100,8 +100,10 @@ class KeyBar(QWidget):
     def _build(self, keys: list[ScreenKey], family: str) -> None:
         while self.lay.count():
             item = self.lay.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            w = item.widget()
+            if w is not None:
+                w.hide()                    # gone now, not when Qt gets round to deleting it
+                w.deleteLater()
         for key in keys:
             self.lay.addWidget(self._button(key.label or key_name(key.action), key.action))
         more = QPushButton("More keys", self, objectName="more")

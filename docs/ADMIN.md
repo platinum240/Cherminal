@@ -141,6 +141,7 @@ setting is in `packaging/elux/policy.toml.example` (installed on eLux as
 | `log_dir` | per user | Where session logs go; `%u` is replaced with the user name. |
 | `log_total_mb` | `10` | All session logs together stay under this size. |
 | `audit_log` | `false` | Write connection events to syslog/journald. |
+| `screen_history` | `true` | `false` stops Modern view keeping past screens (memory only, never hidden fields) for the history and the command palette. |
 | `modern_view` | `"allowed"` | 3270/5250 Modern view: `"off"` keeps everyone on the classic screen, `"default"` starts sessions in Modern view unless they choose Classic. |
 
 Settings the policy decides are greyed out in the session editor with a
@@ -374,7 +375,12 @@ that off per session with `hotspots = false`.
 **Modern view.** Users can switch a 3270 or 5250 tab to Modern view: boxed
 input fields, click to move the cursor, clickable menu options and list
 rows, typing errors explained beside the field, wheel paging, and a bar of
-buttons for the keys the screen lists. It only changes how the screen is drawn and what the
+buttons for the keys the screen lists. It also adds a breadcrumb from the
+screens' titles, a history of this session's screens (in memory only,
+hidden fields blanked; `screen_history = false` in the policy turns it
+off), a Ctrl+K command palette for transactions, macros and actions, and
+copying a screen as text or its table as CSV. List a session's
+transactions under `[transactions]` in its file. It only changes how the screen is drawn and what the
 mouse does; the data sent to the host is the same. A session's
 `view = "modern"` or `"classic"` picks how it starts, and the policy's
 `modern_view` turns it off or makes it the default for sessions that don't
@@ -491,3 +497,4 @@ default.
 | `log_keep` | `2` | Older log files kept per session. |
 | `keys` | | Key overrides, for example `"Ctrl+Enter" = "action:enter"`. |
 | `macros` | | Named macros shown on the function-key bar. |
+| `transactions` | | 3270/5250: codes for the command palette (Ctrl+K), for example `CUST01 = "Customer inquiry"`. |

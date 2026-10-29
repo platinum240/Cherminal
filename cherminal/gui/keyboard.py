@@ -62,7 +62,8 @@ IBM3270_ACTIONS = (
      ("left", "Cursor left"), ("right", "Cursor right")]
     + [(f"pa{i}", f"PA{i}") for i in range(1, 4)]
     + [(f"pf{i}", f"PF{i}") for i in range(1, 25)]
-    + [("copy", "Copy"), ("paste", "Paste"), ("print-screen", "Print screen")])
+    + [("copy", "Copy"), ("paste", "Paste"), ("print-screen", "Print screen"),
+       ("palette", "Command palette")])
 
 IBM5250_ACTIONS = (
     [("enter", "Enter"), ("field-exit", "Field Exit"), ("field-plus", "Field+"),
@@ -77,7 +78,8 @@ IBM5250_ACTIONS = (
      ("up", "Cursor up"), ("down", "Cursor down"), ("left", "Cursor left"),
      ("right", "Cursor right")]
     + [(f"f{i}", f"F{i}") for i in range(1, 25)]
-    + [("copy", "Copy"), ("paste", "Paste"), ("print-screen", "Print screen")])
+    + [("copy", "Copy"), ("paste", "Paste"), ("print-screen", "Print screen"),
+       ("palette", "Command palette")])
 
 DEFAULT, PLAIN, SEND = "<default>", "<plain>", "<send>"
 
@@ -89,7 +91,8 @@ CAP_LABELS = {"reset": "Reset", "erase": "Erase", "tab": "Next fld", "backtab": 
               "scroll-down": "Scroll ↓", "break": "Break", "print-screen": "Print",
               "field-exit": "Fld Exit", "field-plus": "Field+", "field-minus": "Field-",
               "attn": "Attn", "sysreq": "SysReq", "roll-up": "Roll Up", "roll-down": "Roll Dn",
-              "print": "Host prt", "record-backspace": "Rec Bksp", "field-mark": "Fld Mark"}
+              "print": "Host prt", "record-backspace": "Rec Bksp", "field-mark": "Fld Mark",
+              "palette": "Palette"}
 
 
 def describe(value: str | None, labels: dict[str, str]) -> str:

@@ -66,9 +66,11 @@ def serial_ports() -> list[str]:
 class _PairTable(QWidget):
     """Two-column editable table (key/name -> value) with add/remove buttons."""
 
-    def __init__(self, headers: tuple[str, str], capture: bool, parent=None):
+    def __init__(self, headers: tuple[str, str], capture: bool, parent=None,
+                 new_name: str = "macro"):
         super().__init__(parent)
         self.capture = capture
+        self.new_name = new_name
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels(headers)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -87,7 +89,7 @@ class _PairTable(QWidget):
         lay.addLayout(buttons)
 
     def _add(self) -> None:
-        name = "macro"
+        name = self.new_name
         if self.capture:
             dlg = KeyCaptureDialog(self)
             if not dlg.exec():
@@ -608,6 +610,11 @@ class SessionEditor(QDialog):
         lay.addWidget(QLabel("Macros (shown on the function-key bar)"))
         self.macros = _PairTable(("Name", "Sends"), capture=False)
         lay.addWidget(self.macros)
+        self.transactions_label = QLabel("Transactions (IBM 3270/5250 command palette, Ctrl+K)")
+        lay.addWidget(self.transactions_label)
+        self.transactions = _PairTable(("Code", "Description"), capture=False,
+                                       new_name="CODE")
+        lay.addWidget(self.transactions)
         lay.addWidget(hint)
         return w
 
@@ -852,6 +859,7 @@ class SessionEditor(QDialog):
         self._log_toggled(self.log_session.isChecked())
         self.keys.set_items(p.keys)
         self.macros.set_items(p.macros)
+        self.transactions.set_items(p.transactions)
 
     def _build(self) -> SessionProfile:
         keys = {}
@@ -894,7 +902,8 @@ class SessionEditor(QDialog):
                             else self._loaded.auto_reconnect),
             log_session=(self.log_session.isChecked() if self.log_session.isEnabled()
                          else self._loaded.log_session), log_file_kb=self.log_file_kb.value(),
-            log_keep=self.log_keep.value(), keys=keys, macros=self.macros.items())
+            log_keep=self.log_keep.value(), keys=keys, macros=self.macros.items(),
+            transactions=self.transactions.items())
 
     def _printer_name(self) -> str:
         text = self.printer.currentText().strip()

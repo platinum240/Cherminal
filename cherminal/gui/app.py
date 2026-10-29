@@ -27,7 +27,8 @@ from .terminal import TerminalWidget
 # the menus use the usual Mac keys there (Cmd+T, Cmd+W, Cmd+C...).
 MAC_SHORTCUTS = {"Ctrl+Shift+O": "Ctrl+O", "Ctrl+Shift+N": "Ctrl+N", "Ctrl+Shift+T": "Ctrl+T",
                  "Ctrl+Shift+W": "Ctrl+W", "Ctrl+Shift+Q": "Ctrl+Q", "Ctrl+Shift+F": "Ctrl+F",
-                 "Ctrl+Shift+P": "Ctrl+P", "mac:copy": "Ctrl+C", "mac:paste": "Ctrl+V"}
+                 "Ctrl+Shift+P": "Ctrl+P", "mac:copy": "Ctrl+C", "mac:paste": "Ctrl+V",
+                 "mac:palette": "Ctrl+K"}
 
 
 def menu_shortcut(key: str, mac: bool | None = None) -> str:
@@ -93,6 +94,10 @@ class MainWindow(QMainWindow):
         e = mb.addMenu("&Edit")
         self._action(e, "&Copy", lambda: self._term() and self._term().copy(), "mac:copy")
         self._action(e, "&Paste", lambda: self._term() and self._term().paste(), "mac:paste")
+        self.copy_screen_action = self._action(
+            e, "Copy screen &text", lambda: self._term() and self._term().copy_screen())
+        self.export_action = self._action(
+            e, "&Export table as CSV…", lambda: self._term() and self._term().export_table())
         e.addSeparator()
         self._action(e, "&Search…", self.open_search, "Ctrl+Shift+F")
         v = mb.addMenu("&View")
@@ -105,6 +110,12 @@ class MainWindow(QMainWindow):
         # Modern view for IBM 3270/5250 tabs: in the View menu and beside the tabs.
         self.modern_action = self._action(v, "&Modern view", self.toggle_modern, "Ctrl+Shift+M")
         self.modern_action.setCheckable(True)
+        # Ctrl+K reaches the palette through the 3270/5250 keymaps (action:palette),
+        # so it stays a host key in VT tabs; on a Mac the menu takes ⌘K.
+        self.palette_action = self._action(v, "&Command palette…", self.open_palette,
+                                           "mac:palette")
+        self.history_action = self._action(v, "Screen &history",
+                                           lambda: self._term() and self._term().view_history(-1))
         self.modern_button = QToolButton(text="Modern view", autoRaise=True)
         self.modern_button.setDefaultAction(self.modern_action)
         self.modern_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -172,6 +183,7 @@ class MainWindow(QMainWindow):
         term.find_requested.connect(self.open_search)
         term.colours_requested.connect(self.session_colours)
         term.message.connect(lambda text: self.statusBar().showMessage(text, 8000))
+        term.palette_extra = self._palette_items
         idx = self.tabs.addTab(term, profile.name)
         term.title_changed.connect(lambda t, w=term: self._set_tab_title(w, t))
         term.status_changed.connect(lambda text, w=term: self._set_status(w, text))
@@ -276,6 +288,37 @@ class MainWindow(QMainWindow):
         self.modern_action.setVisible(usable)
         self.modern_button.setVisible(usable)
         self.modern_action.setChecked(bool(term and term.modern))
+        block = bool(term and term.can_be_modern)
+        for act in (self.palette_action, self.copy_screen_action, self.export_action):
+            act.setVisible(block)
+        self.history_action.setVisible(bool(term and term.modern))
+
+    def open_palette(self) -> None:
+        term = self._term()
+        if term and term.can_be_modern:
+            term.open_palette()
+
+    def _palette_items(self, term) -> list:
+        """The window's actions in a tab's command palette."""
+        from .palette import Item
+
+        def switch():
+            self.modern_action.setChecked(not term.modern)
+            self.toggle_modern()
+
+        items = []
+        if self.modern_action.isVisible():
+            items.append(Item("Actions", "Classic view" if term.modern else "Modern view",
+                              self.modern_action.shortcut().toString(), switch))
+        if term.session.can_transfer:
+            items.append(Item("Actions", "Send or receive a file (IND$FILE)", "",
+                              self.transfer_file))
+        items.append(Item("Actions", "Reconnect", "", self.reconnect))
+        items.append(Item("Actions", "Disconnect", "", term.user_disconnect))
+        if not self.limited:
+            items.append(Item("Actions", "Edit this session", "", self.edit_current))
+        items.append(Item("Actions", "Colours for this session", "", self.session_colours))
+        return items
 
     def toggle_modern(self) -> None:
         term = self._term()

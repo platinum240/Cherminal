@@ -5,6 +5,12 @@ Check what you are running with `cherminal --version` (or
 
 ## 0.11.0
 
+- Modern view, part 3: a breadcrumb above the screen from the screens' own
+  titles; a history of this session's screens to look back at and copy
+  from (memory only, no hidden fields; the policy's `screen_history = false`
+  turns it off); a command palette (Ctrl+K, ⌘K on a Mac) for transactions
+  (the new `transactions` session setting), macros, screen keys, recent
+  screens and actions; Copy screen text, and Export table as CSV.
 - SCO ANSI is listed as `scoansi` (it was `ansi`; sessions saved with
   `ansi` still open as SCO ANSI). Like the SCO console it now ignores the
   DEC keypad and cursor-key modes, so keypad Enter sends CR instead of

@@ -41,6 +41,7 @@ browser opens.
     audit_log = true                  # connection log to syslog/journald (never keystrokes)
     ssh_known_hosts_only = true       # SSH only to hosts whose keys the administrator added
     modern_view = "allowed"           # 3270/5250 Modern view: "off", "allowed" or "default"
+    screen_history = true             # Modern view keeps this session's screens in memory
 """
 
 from __future__ import annotations
@@ -82,6 +83,7 @@ class Policy:
     audit_log: bool = False
     ssh_known_hosts_only: bool = False   # refuse SSH hosts whose keys aren't known
     modern_view: str = "allowed"      # "off": classic only; "default": modern unless chosen
+    screen_history: bool = True       # Modern view may keep past screens (in memory only)
     source: str = field(default="", compare=False)   # where it was read from
     given: frozenset = field(default=frozenset(), compare=False)   # settings in the file
 
@@ -92,7 +94,8 @@ class Policy:
         if unknown:
             raise PolicyError(f"unknown policy setting(s): {', '.join(sorted(unknown))}")
         for key in ("limited", "file_upload", "file_download", "print_to_file", "require_tls",
-                    "require_tls_verify", "auto_reconnect", "audit_log", "ssh_known_hosts_only"):
+                    "require_tls_verify", "auto_reconnect", "audit_log", "ssh_known_hosts_only",
+                    "screen_history"):
             if key in data and not isinstance(data[key], bool):
                 raise PolicyError(f"{key} must be true or false")
         values = dict(data)

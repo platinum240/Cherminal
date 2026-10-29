@@ -13,6 +13,7 @@ from typing import Callable
 from . import emulation, policy
 from .sessionlog import SessionLog, audit, duration, line_text, open_log
 from .config import ProfileStore, SessionProfile
+from .emulation.navigation import ScreenHistory, Snapshot
 from .keymap import Binding, Keymap, normalize_key
 from .screen import Screen
 from .transport import Transport, from_profile
@@ -43,6 +44,11 @@ class Session:
         self.started: float | None = None
         self.log: SessionLog | None = None
         self.log_error = ""
+        # Modern view: the screens of this session, in memory only. The
+        # terminal turns keeping them on; the site policy can forbid it.
+        self.history = ScreenHistory()
+        self.keep_history = False
+        self.emulation.on_aid = self._remember_screen
 
     # -------------------------------------------------------------- wiring
 
@@ -173,6 +179,12 @@ class Session:
                 pass
             finally:
                 log.close()
+
+    def _remember_screen(self) -> None:
+        """Keep the screen the user is leaving (called under the lock)."""
+        if self.keep_history and policy.current().screen_history:
+            self.history.add(Snapshot.of(self.screen, self.emulation.input_fields(),
+                                         time.time()))
 
     def feed(self, data: bytes) -> None:
         with self.lock:

@@ -224,6 +224,7 @@ def _ibm3270() -> dict[str, str]:
         "Escape": "action:reset", "Pause": "action:clear", "Ctrl+Pause": "action:clear",
         "PageUp": "action:pf7", "PageDown": "action:pf8",
         "Alt+F1": "action:pa1", "Alt+F2": "action:pa2", "Alt+F3": "action:pa3",
+        "Ctrl+K": "action:palette",
     }
     for i in range(1, 13):
         m[f"F{i}"] = f"action:pf{i}"
@@ -254,6 +255,7 @@ def _ibm5250() -> dict[str, str]:
         "Ctrl+Pause": "action:clear", "Ctrl+F1": "action:help", "Ctrl+D": "action:dup",
         "Ctrl+Print": "action:print",
         "PageUp": "action:roll-down", "PageDown": "action:roll-up",
+        "Ctrl+K": "action:palette",
     }
     for i in range(1, 13):
         m[f"F{i}"] = f"action:f{i}"
