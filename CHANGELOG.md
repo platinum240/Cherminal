@@ -5,6 +5,9 @@ Check what you are running with `cherminal --version` (or
 
 ## Unreleased
 
+- AppImage: starts on desktops without the xcb-util libraries ("xcb-cursor0
+  or libxcb-cursor0 is needed to load the Qt xcb platform plugin"). The
+  libraries Qt's X11 plugin needs now ship inside the AppImage.
 - Modern view for IBM 3270 and 5250 sessions (View › Modern view,
   Ctrl+Shift+M, or the button beside the tabs): input fields are boxed,
   the field with the cursor is outlined, a click puts the cursor in a
