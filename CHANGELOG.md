@@ -3,6 +3,19 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.12.0
+
+- Modern view, part 4: custom layouts. A layout rule (a TOML file in a
+  `layouts/` folder, your own or a shared setup folder's) recognises a
+  3270/5250 screen by text at known positions and draws it as a form: a
+  title, the screen's input fields as text boxes, values in cards (money
+  as money, status codes as coloured badges) and tables as tables, where a
+  double-click opens a row. Typing, Enter and the function keys still go
+  to the same fields and keys, and screens no rule matches look as before.
+  **Show screen** on the breadcrumb bar switches back to the plain screen;
+  View › **Make layout from this screen…** writes a starting rule to edit
+  and save. See "Custom layouts" in docs/ADMIN.md.
+
 ## 0.11.1
 
 - Modern view: the button beside the tabs now says which view it switches

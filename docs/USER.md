@@ -180,6 +180,17 @@ outside the box closes it):
 the screen, such as a list of orders or jobs, as a CSV file for a
 spreadsheet. Hidden fields are never copied.
 
+**Custom layouts.** Your administrator (or you) can give a screen you use
+a lot its own layout: a proper form with a title, text boxes for the
+fields, cards of values with coloured status badges, and real tables. When
+a screen has one, Modern view draws it that way automatically. Type in the
+boxes, press Enter or a function key, and double-click a table row to open
+it, just as on the screen. **Show screen** on the bar above switches to the
+plain screen (and **Show layout** back). To make one, open the screen and
+choose View › **Make layout from this screen…**: Cherminal writes a
+starting rule you can adjust and save. The administrator guide describes
+the rules.
+
 Every key works the same in both views, and the host can't tell them
 apart. The switch changes the open tab; to start a session in Modern view
 every time, set Terminal › **IBM 3270/5250 view** in the session.
