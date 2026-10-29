@@ -57,9 +57,13 @@ def test_telnet_close_ends_reader_and_socket():
     accepted = []
     threading.Thread(target=lambda: accepted.append(srv.accept()[0]), daemon=True).start()
     t = TelnetTransport("127.0.0.1", port)
-    closed = threading.Event()
+    opened, closed = threading.Event(), threading.Event()
+    t.on_open = opened.set
     t.on_close = lambda reason: closed.set()
     t.open()
+    # Connected on our side too: the server can accept before the client's
+    # connect returns, and a close while connecting ends without on_close.
+    assert opened.wait(2)
     deadline = time.time() + 2
     while not accepted and time.time() < deadline:
         time.sleep(0.01)
