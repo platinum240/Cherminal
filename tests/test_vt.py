@@ -107,7 +107,7 @@ def test_utf8_split_across_reads(term):
 
 
 def test_sco_colours_and_cp437(term):
-    emu, s, _ = term("ansi")
+    emu, s, _ = term("scoansi")
     emu.feed(b"\x1b[=1FA\xc4")
     assert s.lines[0][0].attr.fg == 4   # PC blue -> ANSI blue
     assert s.lines[0][1].char == "─"

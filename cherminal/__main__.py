@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--serial", metavar="DEVICE")
     ap.add_argument("--baud", type=int, default=9600)
     ap.add_argument("--local", action="store_true", help="open a local shell")
-    ap.add_argument("-e", "--emulation", choices=list(emulation.EMULATIONS))
+    ap.add_argument("-e", "--emulation", choices=[*emulation.EMULATIONS, *emulation.ALIASES])
     ap.add_argument("--list", action="store_true", help="list saved sessions and exit")
     ap.add_argument("--export", metavar="FILE",
                     help="save the named sessions (all if none named) and their keymaps "
