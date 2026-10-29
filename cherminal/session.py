@@ -13,7 +13,7 @@ from typing import Callable
 from . import emulation, policy
 from .sessionlog import SessionLog, audit, duration, line_text, open_log
 from .config import ProfileStore, SessionProfile
-from .keymap import Binding, Keymap
+from .keymap import Binding, Keymap, normalize_key
 from .screen import Screen
 from .transport import Transport, from_profile
 
@@ -237,6 +237,10 @@ class Session:
                 text = "\x1b" + text  # Alt as Meta
             self.send_text(text)
             return True
+        if (binding.kind == "send" and binding.value == "\r"
+                and getattr(self.emulation, "newline_mode", False)
+                and normalize_key(name).split("+")[-1] in ("Enter", "KeypadEnter")):
+            binding = Binding("send", "\r\n")  # host set LNM (CSI 20 h): Enter sends CR LF
         self.run_binding(binding)
         return True
 

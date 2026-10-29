@@ -5,6 +5,14 @@ Check what you are running with `cherminal --version` (or
 
 ## Unreleased
 
+- SCO ANSI is listed as `scoansi` (it was `ansi`; sessions saved with
+  `ansi` still open as SCO ANSI). Like the SCO console it now ignores the
+  DEC keypad and cursor-key modes, so keypad Enter sends CR instead of
+  `ESC O M` when the host has been told the terminal is a VT.
+- New **Keypad Enter sends** setting (`keypad_enter_sends`): CR, CR LF or
+  LF for the number-pad Enter, separate from Return, and winning over
+  keypad application mode. Shift+Return now follows **Enter sends** too,
+  and VT line feed/new line mode (`ESC [ 20 h`) makes Return send CR LF.
 - Modern view, part 2: Graphite and Paper colours that follow the
   desktop (`modern_theme`); typing mistakes are explained under the field
   instead of locking the keyboard, and changed fields get a dot; numbered

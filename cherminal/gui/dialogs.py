@@ -539,7 +539,18 @@ class SessionEditor(QDialog):
             self.view.setToolTip("Modern view is turned off on this computer.")
             self.modern_theme.setEnabled(False)
         self.enter_sends = QComboBox()
-        self.enter_sends.addItems(["cr", "crlf", "lf"])
+        for label, data in (("CR", "cr"), ("CR LF", "crlf"), ("LF", "lf")):
+            self.enter_sends.addItem(label, data)
+        self.enter_sends.setToolTip("What the Return key sends. Most hosts want CR; "
+                                    "the telnet connection adds what the protocol needs.")
+        self.keypad_enter_sends = QComboBox()
+        for label, data in (("As the host asks (ESC O M in keypad mode)", ""),
+                            ("CR", "cr"), ("CR LF", "crlf"), ("LF", "lf")):
+            self.keypad_enter_sends.addItem(label, data)
+        self.keypad_enter_sends.setToolTip(
+            "What the Enter key on the number pad sends. A VT host can switch the keypad "
+            "to application mode, where Enter sends ESC O M; choose CR if that host's "
+            "programs do not understand it.")
         self.resize_mode = QComboBox()
         self.resize_mode.addItem("Scale the text to fit", "scale")
         self.resize_mode.addItem("Add rows and columns", "grow")
@@ -548,6 +559,7 @@ class SessionEditor(QDialog):
                               ("Scrollback lines", self.scrollback), ("Font", self.font_family),
                               ("Font size", self.font_size),
                               ("Answerback", self.answerback), ("Enter sends", self.enter_sends),
+                              ("Keypad Enter sends", self.keypad_enter_sends),
                               ("When the window resizes", self.resize_mode),
                               ("", self.local_echo), ("", self.hotspots),
                               ("IBM 3270/5250 view", self.view),
@@ -817,7 +829,9 @@ class SessionEditor(QDialog):
         self.hotspots.setChecked(p.hotspots)
         self.view.setCurrentIndex(max(0, self.view.findData(p.view)))
         self.modern_theme.setCurrentIndex(max(0, self.modern_theme.findData(p.modern_theme)))
-        self.enter_sends.setCurrentText(p.enter_sends)
+        self.enter_sends.setCurrentIndex(max(0, self.enter_sends.findData(p.enter_sends)))
+        self.keypad_enter_sends.setCurrentIndex(
+            max(0, self.keypad_enter_sends.findData(p.keypad_enter_sends)))
         self.resize_mode.setCurrentIndex(max(0, self.resize_mode.findData(p.resize_mode)))
         self.keymap.setCurrentIndex(max(0, self.keymap.findData(p.keymap)))
         self.backspace.setCurrentIndex(max(0, self.backspace.findData(p.backspace)))
@@ -871,7 +885,8 @@ class SessionEditor(QDialog):
             answerback=self.answerback.text(), local_echo=self.local_echo.isChecked(),
             hotspots=self.hotspots.isChecked(), view=self.view.currentData(),
             modern_theme=self.modern_theme.currentData(),
-            enter_sends=self.enter_sends.currentText(),
+            enter_sends=self.enter_sends.currentData(),
+            keypad_enter_sends=self.keypad_enter_sends.currentData(),
             resize_mode=self.resize_mode.currentData(), printer=self._printer_name(),
             host_print=self.host_print.isChecked(), idle_timeout=self.idle_timeout.value(),
             keepalive=self.keepalive.value(),

@@ -99,6 +99,8 @@ class SessionProfile:
     answerback: str = ""
     local_echo: bool = False
     enter_sends: str = "cr"           # cr | crlf | lf
+    keypad_enter_sends: str = ""      # "" = as the host asks (ESC O M in keypad
+                                      # application mode, else enter_sends) | cr | crlf | lf
     resize_mode: str = "scale"        # scale: keep cols x rows, fit the font
                                       # grow: keep the font, add rows/columns
     printer: str = ""                 # "" = choose in the print dialog each time
@@ -119,6 +121,7 @@ class SessionProfile:
     def __post_init__(self) -> None:
         if self.transport not in TRANSPORTS:
             raise ValueError(f"transport must be one of {', '.join(TRANSPORTS)}")
+        self.emulation = emulation.ALIASES.get(self.emulation, self.emulation)
         if self.emulation not in emulation.EMULATIONS:
             raise ValueError(f"unknown emulation {self.emulation!r}")
         if self.backspace not in ("", "del", "bs"):
@@ -133,6 +136,8 @@ class SessionProfile:
             raise ValueError("port must be between 1 and 65535 (0 = the usual port)")
         if self.enter_sends not in ("cr", "crlf", "lf"):
             raise ValueError("enter_sends must be cr, crlf or lf")
+        if self.keypad_enter_sends not in ("", "cr", "crlf", "lf"):
+            raise ValueError("keypad_enter_sends must be cr, crlf, lf or empty")
         self.lu_name = self.lu_name.strip().upper()
         if self.lu_name and not re.fullmatch(r"[A-Z0-9@#$]{1,8}", self.lu_name):
             raise ValueError("an LU name is 1 to 8 letters, digits, @, # or $")
@@ -376,8 +381,15 @@ class ProfileStore:
             km.update({"Backspace": "^H"})
         elif profile.backspace == "del":
             km.update({"Backspace": "^?"})
-        enter = {"cr": "\\r", "crlf": "\\r\\n", "lf": "\\n"}[profile.enter_sends]
+        ends = {"cr": "\\r", "crlf": "\\r\\n", "lf": "\\n"}
+        enter = ends[profile.enter_sends]
         km.update({"Enter": enter, "KeypadEnter": enter})
+        if "Shift+Enter" not in km.bindings:
+            km.update({"Shift+Enter": enter})    # else Shift+Enter would type a bare CR
+        if profile.keypad_enter_sends:
+            # A fixed choice also wins over keypad application mode's ESC O M.
+            pad = ends[profile.keypad_enter_sends]
+            km.update({"KeypadEnter": pad, "kp:KeypadEnter": pad})
         km.update(profile.keys)
         return km
 

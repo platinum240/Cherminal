@@ -16,9 +16,12 @@ EMULATIONS: dict[str, type[Emulation]] = {
                               IBM5250, IBM5251, IBM3477FC, IBM3287)
 }
 
+# Older names still accepted in saved sessions and on the command line.
+ALIASES = {"ansi": "scoansi"}
+
 # Encodings that suit each emulation when a profile does not set one.
 DEFAULT_ENCODING = {
-    "vt100": "latin-1", "vt220": "latin-1", "ansi": "cp437", "linux": "utf-8",
+    "vt100": "latin-1", "vt220": "latin-1", "scoansi": "cp437", "linux": "utf-8",
     "xterm": "utf-8", "wyse50": "latin-1", "wyse60": "latin-1", "vt320": "latin-1",
     "vt420": "latin-1", "at386": "cp437", "tvi925": "latin-1", "tvi950": "latin-1",
     "adm3a": "ascii",
@@ -31,6 +34,7 @@ DEFAULT_ENCODING = {
 
 def create(name: str, screen, reply=None, encoding: str | None = None,
            answerback: str = "") -> Emulation:
+    name = ALIASES.get(name, name)
     try:
         cls = EMULATIONS[name]
     except KeyError:
@@ -38,4 +42,4 @@ def create(name: str, screen, reply=None, encoding: str | None = None,
     return cls(screen, reply, encoding=encoding or DEFAULT_ENCODING[name], answerback=answerback)
 
 
-__all__ = ["EMULATIONS", "DEFAULT_ENCODING", "Emulation", "create"]
+__all__ = ["ALIASES", "EMULATIONS", "DEFAULT_ENCODING", "Emulation", "create"]

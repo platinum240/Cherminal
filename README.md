@@ -162,6 +162,27 @@ Then, from TinyTerm (or any emulator) set to the emulation you use, Telnet
 to this machine on port 2323 and press each key it asks for. The keymap is
 saved to `~/.config/cherminal/keymaps/tinyterm-wyse60.toml`.
 
+### Enter and Return
+
+Terminal › **Enter sends** sets what the main Return key (and Shift+Return)
+sends: CR (the default, right for almost every host), CR LF or LF. Over
+telnet the protocol's own CR NUL / CR LF rules are added on top, so pick
+CR unless the host's application really wants a line feed too.
+
+**Keypad Enter sends** sets the number-pad Enter separately. By default it
+sends the same as Return, except that a VT host which switches the keypad
+to application mode (`ESC =`) gets `ESC O M`, as a real VT does. If the
+host's programs don't understand that, choose CR here; the choice then
+applies in every mode. In profiles these are `enter_sends` and
+`keypad_enter_sends` (`"cr"`, `"crlf"`, `"lf"`, or `""` for the default).
+A VT host can also ask for CR LF itself with line feed/new line mode
+(`ESC [ 20 h`), which Cherminal follows when Enter is set to CR.
+
+The SCO ANSI emulation (`scoansi`; sessions saved with its old name `ansi`
+still load) behaves like the SCO console: it ignores the DEC keypad and
+cursor-key modes, so Enter, keypad Enter and the arrows always send their
+plain codes even when the host was told the terminal is a VT100.
+
 ## Logging in to SSH hosts as a different user
 
 In a session's Connection tab, tick **Ask for user name and password when

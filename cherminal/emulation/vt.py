@@ -37,6 +37,9 @@ class VTEmulation(Emulation):
     primary_da = "\x1b[?62;1;2;6;7;8;9c"
     secondary_da = "\x1b[>1;10;0c"
     sco_private = False   # CSI = ... colour sequences and CSI s/u
+    # DEC keypad/cursor-key modes (ESC =, CSI ? 1 h, CSI ? 66 h). The SCO
+    # console has neither, so its keys always send their normal codes.
+    dec_key_modes = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -268,7 +271,7 @@ class VTEmulation(Emulation):
         elif ch == "c":
             self.reset()
         elif ch == "=":
-            self.app_keypad = True
+            self.app_keypad = self.dec_key_modes
         elif ch == ">":
             self.app_keypad = False
         elif ch == "N":
@@ -417,7 +420,7 @@ class VTEmulation(Emulation):
     def _dec_mode(self, mode: int, on: bool) -> None:
         s = self.screen
         if mode == 1:
-            self.app_cursor = on
+            self.app_cursor = on and self.dec_key_modes
         elif mode == 5:
             s.reverse_screen = on
             s.dirty = True
@@ -442,7 +445,7 @@ class VTEmulation(Emulation):
                 s.leave_alt_screen()
                 s.restore_cursor()
         elif mode == 66:
-            self.app_keypad = on
+            self.app_keypad = on and self.dec_key_modes
         elif mode == 2004:
             self.bracketed_paste = on
 
@@ -531,11 +534,12 @@ class VT220(VTEmulation):
 
 
 class AnsiSCO(VTEmulation):
-    name = "ansi"
+    name = "scoansi"
     term_type = "scoansi"
     telnet_type = "ANSI"
     keymap = "ansi"
     sco_private = True
+    dec_key_modes = False
     primary_da = "\x1b[?1;2c"
 
 

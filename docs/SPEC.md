@@ -107,7 +107,7 @@ name = "Warehouse AS/400 gateway"
 transport = "telnet"          # ssh | telnet | serial | local
 host = "10.0.0.5"
 port = 23
-emulation = "wyse60"          # vt100 vt220 vt320 vt420 ansi at386 linux xterm
+emulation = "wyse60"          # vt100 vt220 vt320 vt420 scoansi at386 linux xterm
                               # wyse50 wyse60 tvi925 tvi950 adm3a
 encoding = "latin-1"
 cols = 80
