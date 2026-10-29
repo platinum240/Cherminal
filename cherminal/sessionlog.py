@@ -1,5 +1,6 @@
 """Session logs (the text of a session, kept in files that clean up after
-themselves) and the connection audit log (to syslog/journald).
+themselves) and the connection audit log (to syslog/journald, or the
+Windows Application event log).
 
 Thin clients have little disk, so a session log never grows without limit:
 each session writes ``<session>.log`` until it reaches ``log_file_kb``, then
@@ -38,7 +39,7 @@ def _user() -> str:
     try:
         return getpass.getuser()
     except (KeyError, OSError):
-        return str(os.getuid())
+        return str(os.getuid()) if hasattr(os, "getuid") else "unknown"
 
 
 def line_text(line) -> str:
@@ -149,21 +150,53 @@ def audit(event: str, profile, detail: str = "", failed: bool = False) -> None:
     Never anything typed or shown in the session."""
     if not policy.current().audit_log:
         return
-    try:
-        import syslog
-    except ImportError:            # not a Unix system
-        return
-    global _opened
-    if not _opened:
-        syslog.openlog("cherminal", syslog.LOG_PID, syslog.LOG_AUTH)
-        _opened = True
     where = {"local": "local", "serial": profile.serial_device}.get(
         profile.transport, f"{profile.host}:{profile.effective_port}")
     message = (f"user={_user()} session={profile.name!r} transport={profile.transport} "
                f"host={where} event={event}")
     if detail:
         message += f" detail={detail!r}"
+    if system.IS_WINDOWS:
+        _windows_event(message, failed)
+        return
+    try:
+        import syslog
+    except ImportError:            # neither Unix nor Windows
+        return
+    global _opened
+    if not _opened:
+        syslog.openlog("cherminal", syslog.LOG_PID, syslog.LOG_AUTH)
+        _opened = True
     syslog.syslog(syslog.LOG_WARNING if failed else syslog.LOG_INFO, message)
+
+
+EVENT_SOURCE = "Cherminal"          # the installer registers it (packaging/windows)
+_EVENT_INFO, _EVENT_WARNING = 0x0004, 0x0002
+
+
+def _windows_event(message: str, failed: bool) -> None:
+    """One entry in the Application event log, source Cherminal: event 1 for
+    a connection event, 2 for a failure."""
+    import ctypes
+    from ctypes import wintypes
+
+    advapi = ctypes.WinDLL("advapi32")
+    advapi.RegisterEventSourceW.restype = wintypes.HANDLE
+    advapi.RegisterEventSourceW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+    advapi.ReportEventW.argtypes = [wintypes.HANDLE, wintypes.WORD, wintypes.WORD,
+                                    wintypes.DWORD, ctypes.c_void_p, wintypes.WORD,
+                                    wintypes.DWORD, ctypes.POINTER(wintypes.LPCWSTR),
+                                    ctypes.c_void_p]
+    advapi.DeregisterEventSource.argtypes = [wintypes.HANDLE]
+    handle = advapi.RegisterEventSourceW(None, EVENT_SOURCE)
+    if not handle:
+        return
+    try:
+        strings = (wintypes.LPCWSTR * 1)(message)
+        advapi.ReportEventW(handle, _EVENT_WARNING if failed else _EVENT_INFO, 0,
+                            2 if failed else 1, None, 1, 0, strings, None)
+    finally:
+        advapi.DeregisterEventSource(handle)
 
 
 def duration(started: float | None) -> str:

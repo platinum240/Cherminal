@@ -18,13 +18,17 @@ wheel=$(ls "$work"/wheels/cherminal-*.whl)
 
 recipe="$work/cherminal"
 cp -r packaging/appimage "$recipe"
-# Pin the app wheel plus its runtime dependencies from pyproject.toml.
+# Pin the app wheel plus its runtime dependencies from pyproject.toml, leaving
+# out the ones for other systems (python-appimage can't read markers).
 {
     echo "$wheel"
     python3 - <<'PY'
 import tomllib
+from pip._vendor.packaging.requirements import Requirement
 for dep in tomllib.load(open("pyproject.toml", "rb"))["project"]["dependencies"]:
-    print(dep)
+    req = Requirement(dep)
+    if req.marker is None or req.marker.evaluate():
+        print(f"{req.name}{req.specifier}")
 PY
 } > "$recipe/requirements.txt"
 

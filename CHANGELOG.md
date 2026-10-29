@@ -3,6 +3,32 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.13.0
+
+- Windows: Cherminal runs on 64-bit Windows 10 and 11. Each release has an
+  `.msi` (installs for everyone with a Start menu entry; deploys silently
+  with Intune, Configuration Manager or GPO) and a portable `.zip`, built
+  and install-tested by the new `windows` workflow. Unsigned for now.
+- On Windows, sessions and keymaps live in `%APPDATA%\Cherminal`, logs in
+  `%LOCALAPPDATA%\Cherminal\Logs`, and the site policy and shared sessions
+  in `%ProgramData%\Cherminal`, which the installer makes writable only by
+  administrators. Trusted SSH host keys come from
+  `%ProgramData%\ssh\ssh_known_hosts`; the audit log goes to the
+  Application event log.
+- Windows local sessions run PowerShell (or a session's own command) on a
+  Windows pseudo-console; serial ports are COM ports; host passthrough
+  print jobs go to the printer raw through the Windows spooler; the
+  default font is Consolas.
+- Windows keyboard: AltGr types its characters instead of acting as
+  Ctrl+Alt, and the 3270 and 5250 keymaps add Ctrl+Break (Clear), Ctrl+P
+  (5250 host print) and Shift+Pause (5250 System Request) for keys Windows
+  keeps for itself. See docs/WINDOWS.md.
+- `cherminal-cli.exe` beside `Cherminal.exe` takes the command line options
+  (`--version`, `--list`, `--check-policy`, `keycapture`) and prints to the
+  console.
+- `$CHERMINAL_SITE_DIR` and `$XDG_CONFIG_DIRS` take `;`-separated folders on
+  Windows.
+
 ## 0.12.0
 
 - Modern view, part 4: custom layouts. A layout rule (a TOML file in a

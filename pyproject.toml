@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cherminal"
 dynamic = ["version"]
-description = "Terminal emulator for host connections on Linux and macOS: legacy emulations, real key mapping, saved sessions"
+description = "Terminal emulator for host connections on Linux, macOS and Windows: legacy emulations, real key mapping, saved sessions"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
@@ -13,6 +13,7 @@ dependencies = [
     "PyQt6>=6.5",
     "paramiko>=3.0",
     "pyserial>=3.5",
+    "pywinpty>=2.0; sys_platform == 'win32'",   # local shell on Windows (ConPTY)
     "tomli-w>=1.0",
 ]
 

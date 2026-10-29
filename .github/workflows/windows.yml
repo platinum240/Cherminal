@@ -1,0 +1,55 @@
+name: windows
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Unsigned: signing happens separately (docs/WINDOWS.md).
+      - name: Build Cherminal, .msi and .zip
+        run: packaging/build-windows.ps1
+      - name: Install, run and uninstall the .msi
+        run: |
+          $ErrorActionPreference = "Stop"
+          $msi = (Get-ChildItem dist\*.msi).FullName
+          $p = Start-Process msiexec -ArgumentList "/i", "`"$msi`"", "/qn", "/l*v", "install.log" -Wait -PassThru
+          if ($p.ExitCode) { Get-Content install.log -Tail 50; throw "install failed: $($p.ExitCode)" }
+          & "$env:ProgramFiles\Cherminal\cherminal-cli.exe" --version
+          if ($LASTEXITCODE) { throw "installed cherminal-cli.exe failed" }
+          if (-not (Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Cherminal.lnk")) {
+            throw "no Start menu entry"
+          }
+          # Users may read the site folder but not change it.
+          $acl = Get-Acl "$env:ProgramData\Cherminal"
+          $acl.Access | Format-Table IdentityReference, FileSystemRights, IsInherited
+          $users = $acl.Access | Where-Object { $_.IdentityReference -match 'Users$' }
+          if (-not $users -or ($users.FileSystemRights -match 'Write|Modify|FullControl')) {
+            throw "users can change $env:ProgramData\Cherminal"
+          }
+          $p = Start-Process msiexec -ArgumentList "/x", "`"$msi`"", "/qn" -Wait -PassThru
+          if ($p.ExitCode) { throw "uninstall failed: $($p.ExitCode)" }
+          if (Test-Path "$env:ProgramFiles\Cherminal\Cherminal.exe") { throw "uninstall left the app" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cherminal-Windows-x64
+          path: |
+            dist/*.msi
+            dist/*.zip
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.msi
+            dist/*.zip

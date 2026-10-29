@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -73,6 +74,7 @@ def test_render_to_pdf(app, tmp_path):
         assert "\f" in text.rstrip("\f")                            # ran onto a second page
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="CUPS lp; Windows uses the spooler")
 def test_print_raw_uses_lp(app, tmp_path, monkeypatch):
     from cherminal.gui.printing import print_raw
     bin_dir = tmp_path / "bin"

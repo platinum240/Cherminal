@@ -7,7 +7,7 @@
 
 # Cherminal
 
-A terminal emulator for Linux and macOS in the spirit of Century Software's
+A terminal emulator for Linux, macOS and Windows in the spirit of Century Software's
 TinyTerm: for connecting to Unix hosts, line-of-business applications,
 network gear and serial devices that expect a *real* terminal (VT220, SCO
 ANSI, Wyse 60, TeleVideo...), with key mapping and saved sessions as
@@ -19,6 +19,7 @@ replacement; see [docs/SPEC.md](docs/SPEC.md) for the feature scope, the
 sources it was derived from, and the architecture.
 
 Guides: [macOS](docs/MACOS.md) (keyboard, Jamf, signing),
+[Windows](docs/WINDOWS.md) (installer, keyboard, where files live),
 [administrator guide](docs/ADMIN.md) (installing, shared setup,
 site policy, certificates, host keys, logging, eLux rollout) and
 [user guide](docs/USER.md).
@@ -72,6 +73,15 @@ Download `Cherminal-<version>-macos-arm64.dmg` (Apple Silicon) or
 or deploy the `.pkg` with Jamf. See [docs/MACOS.md](docs/MACOS.md) for the
 Mac keyboard (Control, Command and Option), managed preferences, and
 building, signing and notarizing the app with `packaging/build-macos.sh`.
+
+### On Windows
+
+Download `Cherminal-<version>-windows-x64.msi` from a release and run it,
+or deploy it with Intune or Configuration Manager
+(`msiexec /i Cherminal-<version>-windows-x64.msi /qn`). The `.zip` is a
+portable copy that needs no installing. See [docs/WINDOWS.md](docs/WINDOWS.md)
+for the keyboard, where files live, the local shell, and building with
+`packaging/build-windows.ps1`.
 
 ### On a workstation with no internet (AppImage)
 

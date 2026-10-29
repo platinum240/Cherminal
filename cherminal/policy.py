@@ -13,6 +13,9 @@ configuration profile from Jamf or another MDM for the preference domain
 ``/Library/Managed Preferences``. Settings there override the file's, and a
 profile for one user overrides one for the whole computer.
 
+On Windows the file is ``%ProgramData%\\Cherminal\\policy.toml``; the
+installer creates that folder so that only administrators can change it.
+
 Every setting is optional and the defaults change nothing, so an empty or
 missing file behaves exactly like no policy. A file that exists but cannot
 be read or has a mistake in it stops Cherminal from starting rather than

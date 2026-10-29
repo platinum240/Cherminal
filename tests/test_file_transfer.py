@@ -1,4 +1,5 @@
 import os
+import posixpath
 import socket
 import threading
 
@@ -41,7 +42,7 @@ def make_sftp(root):
         def canonicalize(self, path):
             if not path.startswith("/"):
                 path = "/home/chad/" + path
-            return os.path.normpath(path)
+            return posixpath.normpath(path)
 
         def stat(self, path):
             try:

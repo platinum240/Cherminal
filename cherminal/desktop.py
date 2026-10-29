@@ -23,7 +23,7 @@ def data_home() -> Path:
 
 def data_dirs() -> list[Path]:
     dirs = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
-    return [data_home()] + [Path(d) for d in dirs.split(":") if d]
+    return [data_home()] + [Path(d) for d in dirs.split(os.pathsep) if d]
 
 
 def entry_installed() -> bool:

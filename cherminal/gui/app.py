@@ -157,8 +157,7 @@ class MainWindow(QMainWindow):
         dark = self.palette().window().color().lightness() < 128
         box.setIconPixmap(logo(dark))
         box.setText(f"Cherminal {__version__}")
-        box.setInformativeText("Terminal emulation for host connections on "
-                               f"{'macOS' if system.IS_MAC else 'Linux'}.")
+        box.setInformativeText(f"Terminal emulation for host connections on {system.name()}.")
         box.exec()
 
     # ------------------------------------------------------------ sessions
@@ -387,6 +386,10 @@ def run(profiles: list[SessionProfile], store: ProfileStore, show_manager: bool,
         # a name it derives from the program); that is harmless, so don't
         # print it on every start. `cherminal --install-desktop` adds the file.
         QLoggingCategory.setFilterRules("qt.qpa.services.warning=false")
+    if system.IS_WINDOWS:
+        # Cherminal's own taskbar button and icon, rather than Python's.
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(system.WINDOWS_APP_ID)
     app = QApplication.instance() or QApplication(sys.argv)
     app.setWindowIcon(app_icon())
     win = MainWindow(store, limited=limited)
@@ -398,8 +401,9 @@ def run(profiles: list[SessionProfile], store: ProfileStore, show_manager: bool,
         win.disconnect_all()
         app.quit()
 
-    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
-        signal.signal(sig, on_signal)
+    for name in ("SIGINT", "SIGTERM", "SIGHUP"):       # Windows has no SIGHUP
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), on_signal)
     # Python only runs signal handlers when it gets control back from Qt.
     tick = QTimer(interval=250)
     tick.timeout.connect(lambda: None)

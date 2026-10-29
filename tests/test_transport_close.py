@@ -1,7 +1,10 @@
 import os
 import socket
+import sys
 import threading
 import time
+
+import pytest
 
 from cherminal.transport.base import Transport
 from cherminal.transport.local import LocalTransport
@@ -54,9 +57,13 @@ def test_telnet_close_ends_reader_and_socket():
     accepted = []
     threading.Thread(target=lambda: accepted.append(srv.accept()[0]), daemon=True).start()
     t = TelnetTransport("127.0.0.1", port)
-    closed = threading.Event()
+    opened, closed = threading.Event(), threading.Event()
+    t.on_open = opened.set
     t.on_close = lambda reason: closed.set()
     t.open()
+    # Connected on our side too: the server can accept before the client's
+    # connect returns, and a close while connecting ends without on_close.
+    assert opened.wait(2)
     deadline = time.time() + 2
     while not accepted and time.time() < deadline:
         time.sleep(0.01)
@@ -71,6 +78,7 @@ def test_telnet_close_ends_reader_and_socket():
     srv.close()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Unix pseudo-terminal")
 def test_local_shell_is_hung_up_on_close():
     t = LocalTransport("sleep 30")
     t.open()

@@ -7,6 +7,9 @@ reaches the host (it drives the menus). Option types accented characters
 on a Mac; a session's ``option_key`` setting decides whether Option is Alt
 instead (``alt``), only the left one is (``left-alt``, the right one still
 types characters), or neither is (``text``).
+
+On Windows, AltGr arrives as Ctrl+Alt with the character it types (``@``,
+``\\``, ``{`` on many European layouts); that is typing, not a Ctrl+Alt key.
 """
 
 from __future__ import annotations
@@ -14,7 +17,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeyEvent
 
-from ..system import IS_MAC
+from ..system import IS_MAC, IS_WINDOWS
 
 K = Qt.Key
 _NAMED = {
@@ -54,7 +57,7 @@ def option_is_alt(event: QKeyEvent, option_key: str) -> bool:
 
 
 def key_name(event: QKeyEvent, option_key: str = "left-alt",
-             mac: bool = IS_MAC) -> tuple[str, str] | None:
+             mac: bool = IS_MAC, windows: bool = IS_WINDOWS) -> tuple[str, str] | None:
     """Return (name, text) for a key event, or None for a bare modifier.
 
     ``option_key`` only matters on macOS (see the module notes).
@@ -79,6 +82,8 @@ def key_name(event: QKeyEvent, option_key: str = "left-alt",
     else:
         ctrl = bool(mods & M.ControlModifier)
         alt = bool(mods & M.AltModifier)
+        if windows and ctrl and alt and text and text.isprintable() and key not in _NAMED:
+            return ("", text)       # AltGr typing a character
     if mac and key == K.Key_Clear:
         base = "Clear"              # the Mac keypad's key where Num Lock is
     elif mods & M.KeypadModifier and key in _KEYPAD:

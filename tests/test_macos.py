@@ -2,6 +2,7 @@
 
 import os
 import plistlib
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 def mac(monkeypatch, tmp_path):
     """Pretend to be a Mac with an empty home folder and no XDG variables."""
     monkeypatch.setattr(system, "IS_MAC", True)
+    monkeypatch.setattr(system, "IS_WINDOWS", False)
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))   # Windows
     for name in ("XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CONFIG_DIRS"):
         monkeypatch.delenv(name, raising=False)
     return tmp_path
@@ -50,7 +53,9 @@ def test_xdg_variables_still_win_on_mac(mac, monkeypatch):
 
 def test_linux_folders_unchanged(monkeypatch, tmp_path):
     monkeypatch.setattr(system, "IS_MAC", False)
+    monkeypatch.setattr(system, "IS_WINDOWS", False)
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))   # Windows
     for name in ("XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CONFIG_DIRS"):
         monkeypatch.delenv(name, raising=False)
     assert system.config_dir() == tmp_path / ".config/cherminal"
@@ -60,6 +65,7 @@ def test_linux_folders_unchanged(monkeypatch, tmp_path):
 
 
 def test_fonts(monkeypatch):
+    monkeypatch.setattr(system, "IS_WINDOWS", False)
     monkeypatch.setattr(system, "IS_MAC", True)
     assert system.font_family("Monospace") == system.font_family("") == "Menlo"
     assert system.font_family("Courier") == "Courier"
@@ -67,7 +73,9 @@ def test_fonts(monkeypatch):
     assert system.font_family("") == "Monospace"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Unix shells")
 def test_login_shell(monkeypatch):
+    monkeypatch.setattr(system, "IS_WINDOWS", False)
     monkeypatch.setenv("SHELL", "/bin/zsh")
     monkeypatch.setattr(system, "IS_MAC", True)
     assert local.login_shell() == ["/bin/zsh", "-l"]

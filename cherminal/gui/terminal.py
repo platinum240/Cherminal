@@ -859,7 +859,8 @@ class TerminalWidget(QWidget):
             self.session.touch()
             self.reconnect_now()
             return
-        named = key_name(event, self.session.profile.option_key, mac=system.IS_MAC)
+        named = key_name(event, self.session.profile.option_key, mac=system.IS_MAC,
+                         windows=system.IS_WINDOWS)
         if named is None:
             return
         name, text = named

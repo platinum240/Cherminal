@@ -15,8 +15,8 @@
 
 An administrator's policy in /etc/cherminal/policy.toml (on macOS,
 /Library/Application Support/Cherminal/policy.toml or managed preferences;
-see cherminal.policy) applies to every start and cannot be turned off from
-the command line.
+on Windows, %ProgramData%\\Cherminal\\policy.toml; see cherminal.policy)
+applies to every start and cannot be turned off from the command line.
 """
 
 from __future__ import annotations
@@ -105,6 +105,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.install_desktop:
         if system.IS_MAC:
             print("cherminal: not needed on macOS; drag Cherminal.app to Applications instead",
+                  file=sys.stderr)
+            return 0
+        if system.IS_WINDOWS:
+            print("cherminal: not needed on Windows; the installer adds the Start menu entry",
                   file=sys.stderr)
             return 0
         from .desktop import install

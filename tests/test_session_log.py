@@ -2,6 +2,7 @@
 
 import errno
 import os
+import sys
 
 import pytest
 
@@ -80,7 +81,8 @@ def test_vt_session_log_hides_hidden_text(tmp_path):
     assert text.count("line 9") == 1              # the screen at the end is written once
     assert "disconnected: closed by the user ====" in text
     path = tmp_path / "state/cherminal/logs/payroll.log"
-    assert oct(path.stat().st_mode & 0o777) == "0o600"
+    if sys.platform != "win32":                   # Windows has ACLs, not modes
+        assert oct(path.stat().st_mode & 0o777) == "0o600"
 
 
 def test_log_survives_a_drop_and_reconnect(tmp_path):
@@ -170,7 +172,7 @@ def test_full_disk_stops_logging_not_the_session(tmp_path, monkeypatch):
 
 def test_policy_controls_logging(tmp_path):
     path = tmp_path / "policy.toml"
-    path.write_text('session_logging = "always"\nlog_dir = "' + str(tmp_path)
+    path.write_text('session_logging = "always"\nlog_dir = "' + tmp_path.as_posix()
                     + '/central/%u"\nlog_total_mb = 2\naudit_log = true\n')
     rules = policy.read(path)
     assert rules.session_logging == "always" and rules.log_total_mb == 2 and rules.audit_log

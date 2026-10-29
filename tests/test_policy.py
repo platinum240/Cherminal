@@ -1,5 +1,6 @@
 import os
 import ssl
+import sys
 
 import pytest
 
@@ -141,7 +142,8 @@ def test_check_policy(tmp_path, capsys):
     assert "unknown policy setting" in capsys.readouterr().err
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root can read any file")
+@pytest.mark.skipif(sys.platform == "win32" or os.geteuid() == 0,
+                    reason="root can read any file; Windows has no chmod 0")
 def test_unreadable_policy_is_an_error(tmp_path):
     path = write(tmp_path / "policy.toml", "limited = true\n")
     path.chmod(0)
