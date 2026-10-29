@@ -17,6 +17,8 @@ jobs:
             python: "3.12"
     env:
       QT_QPA_PLATFORM: offscreen
+      # Qt's offscreen platform on Windows only finds fonts it is pointed at.
+      QT_QPA_FONTDIR: ${{ startsWith(matrix.os, 'windows') && 'C:\Windows\Fonts' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

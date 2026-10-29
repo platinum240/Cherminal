@@ -366,6 +366,7 @@ def test_transfer_policy(tmp_path, monkeypatch):
         assert not policy.Policy.from_dict({"limited": True}).file_transfer(False)
         # ...and then only straight into the Downloads folder.
         monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))   # Windows
         (tmp_path / "Downloads").mkdir()
         policy.set_current(policy.Policy.from_dict({"limited": True, "file_download": True}))
         assert policy.current().file_transfer(False) and not policy.current().file_transfer(True)
@@ -432,6 +433,7 @@ def test_transfer_dialog_limited_mode(app, tmp_path, monkeypatch):
     from cherminal.gui.terminal import TerminalWidget
     from cherminal.gui.transfer import TransferDialog
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))   # Windows
     (tmp_path / "Downloads").mkdir()
     (tmp_path / "Downloads" / "upload.txt").write_text("x")
     s = Session(SessionProfile(transport="telnet", host="h", emulation="ibm3278-2"),

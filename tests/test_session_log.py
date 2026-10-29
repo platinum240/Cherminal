@@ -172,7 +172,7 @@ def test_full_disk_stops_logging_not_the_session(tmp_path, monkeypatch):
 
 def test_policy_controls_logging(tmp_path):
     path = tmp_path / "policy.toml"
-    path.write_text('session_logging = "always"\nlog_dir = "' + str(tmp_path)
+    path.write_text('session_logging = "always"\nlog_dir = "' + tmp_path.as_posix()
                     + '/central/%u"\nlog_total_mb = 2\naudit_log = true\n')
     rules = policy.read(path)
     assert rules.session_logging == "always" and rules.log_total_mb == 2 and rules.audit_log

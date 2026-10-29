@@ -22,6 +22,7 @@ def mac(monkeypatch, tmp_path):
     monkeypatch.setattr(system, "IS_MAC", True)
     monkeypatch.setattr(system, "IS_WINDOWS", False)
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))   # Windows
     for name in ("XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CONFIG_DIRS"):
         monkeypatch.delenv(name, raising=False)
     return tmp_path
@@ -54,6 +55,7 @@ def test_linux_folders_unchanged(monkeypatch, tmp_path):
     monkeypatch.setattr(system, "IS_MAC", False)
     monkeypatch.setattr(system, "IS_WINDOWS", False)
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))   # Windows
     for name in ("XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CONFIG_DIRS"):
         monkeypatch.delenv(name, raising=False)
     assert system.config_dir() == tmp_path / ".config/cherminal"

@@ -1,3 +1,4 @@
+import os
 import tomllib
 from pathlib import Path
 
@@ -89,7 +90,7 @@ def test_earlier_site_folder_wins(tmp_path):
 
 
 def test_site_dirs_from_environment(monkeypatch, tmp_path):
-    monkeypatch.setenv("CHERMINAL_SITE_DIR", f"{tmp_path}/share:{tmp_path}/usb")
+    monkeypatch.setenv("CHERMINAL_SITE_DIR", os.pathsep.join([f"{tmp_path}/share", f"{tmp_path}/usb"]))
     monkeypatch.setenv("APPIMAGE", f"{tmp_path}/apps/Cherminal.AppImage")
     monkeypatch.setenv("XDG_CONFIG_DIRS", "/etc/xdg")
     assert site_dirs() == [tmp_path / "share", tmp_path / "usb",

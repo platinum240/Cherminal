@@ -1,9 +1,12 @@
+import os
+
 from cherminal import __main__ as cli
 from cherminal import desktop, system
 
 
 def test_install_desktop_entry(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(system, "IS_MAC", False)       # a Linux desktop
+    monkeypatch.setattr(system, "IS_WINDOWS", False)
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "share"))
     monkeypatch.setenv("XDG_DATA_DIRS", str(tmp_path / "system"))
     monkeypatch.setenv("APPIMAGE", "/opt/apps/Cherminal 0.8.AppImage")
@@ -20,7 +23,7 @@ def test_install_desktop_entry(tmp_path, monkeypatch, capsys):
 
 def test_system_wide_entry_counts(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "share"))
-    monkeypatch.setenv("XDG_DATA_DIRS", f"{tmp_path}/a:{tmp_path}/b")
+    monkeypatch.setenv("XDG_DATA_DIRS", os.pathsep.join([f"{tmp_path}/a", f"{tmp_path}/b"]))
     (tmp_path / "b/applications").mkdir(parents=True)
     (tmp_path / "b/applications/cherminal.desktop").write_text("[Desktop Entry]\n")
     assert desktop.entry_installed()
