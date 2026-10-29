@@ -3,7 +3,7 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
-## Unreleased
+## 0.11.0
 
 - SCO ANSI is listed as `scoansi` (it was `ansi`; sessions saved with
   `ansi` still open as SCO ANSI). Like the SCO console it now ignores the
