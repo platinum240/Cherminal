@@ -299,9 +299,9 @@ most systems, facility `auth`, tag `cherminal`) for every connection,
 disconnection and failed connection:
 
 ```
-cherminal[4242]: user=chad session='Payroll' transport=telnet host=mf1.example.com:992 event=connected
-cherminal[4242]: user=chad session='Payroll' transport=telnet host=mf1.example.com:992 event=disconnected detail='idle for 15 minutes; after 0h42m10s'
-cherminal[4242]: user=chad session='Payroll' transport=telnet host=mf1.example.com:992 event=connect-failed detail='[Errno 111] Connection refused'
+cherminal[4242]: user=username session='Payroll' transport=telnet host=mf1.example.com:992 event=connected
+cherminal[4242]: user=username session='Payroll' transport=telnet host=mf1.example.com:992 event=disconnected detail='idle for 15 minutes; after 0h42m10s'
+cherminal[4242]: user=username session='Payroll' transport=telnet host=mf1.example.com:992 event=connect-failed detail='[Errno 111] Connection refused'
 ```
 
 Failures and dropped connections are logged at warning level, the rest at

@@ -34,8 +34,8 @@ to wait for signed releases or allow the app by path or file hash.
 **Silent install and upgrade.**
 
 ```bat
-msiexec /i Cherminal-0.13.0-windows-x64.msi /qn
-msiexec /x Cherminal-0.13.0-windows-x64.msi /qn
+msiexec /i Cherminal-<version>-windows-x64.msi /qn
+msiexec /x Cherminal-<version>-windows-x64.msi /qn
 ```
 
 A newer `.msi` replaces the installed version in place; users' sessions

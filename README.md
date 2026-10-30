@@ -31,15 +31,23 @@ site policy, certificates, host keys, logging, eLux rollout) and
   IBM 3278/3279 models 2-5 for mainframes (TN3270/TN3270E), IBM 3287
   printer sessions, and IBM 5250 display stations (3179-2, 5251-11,
   3477-FC) for IBM i / AS/400 (TN5250).
+- **Runs on** Linux (a self-contained AppImage, pip, or an eLux package),
+  macOS 12+ (`.dmg` or `.pkg`, Apple Silicon and Intel) and 64-bit
+  Windows 10/11 (`.msi` or a portable `.zip`).
 - **Connections:** SSH (keys, agent, password, host-key verification),
   Telnet (TTYPE, NAWS, binary, echo/SGA, optional TLS), TN3270, TN3270E
   (LU names), TN5250 (with a fixed device name if wanted), serial ports,
-  local shell.
+  local shell. Any port: type `host:2323` in the Host box or set **Port**.
+- **Modern view for 3270 and 5250:** boxed input fields, a button bar for
+  the screen's PF keys, clickable menus and list rows, Graphite and Paper
+  themes, a breadcrumb and screen history, a Ctrl+K command palette, CSV
+  export, and custom layouts that turn a screen into a form. See
+  [Modern view](#modern-view-3270-and-5250).
 - **Key mapping:** per-emulation defaults, reusable keymap files with
   inheritance, per-session overrides, application cursor/keypad aware, a
   press-to-capture editor, and `action:` bindings (paste, break, macros).
-- **Saved sessions:** one readable TOML file per session under
-  `~/.config/cherminal/sessions/`; no passwords are stored.
+- **Saved sessions:** one readable TOML file per session (under
+  `~/.config/cherminal/sessions/` on Linux); no passwords are stored.
 - **Scale to window:** by default the text grows and shrinks with the window
   while the host keeps its fixed grid (80×24 etc.); switch a session to
   "add rows and columns" instead, or toggle View › Scale text to window.
@@ -59,7 +67,10 @@ site policy, certificates, host keys, logging, eLux rollout) and
   idle disconnect by default that blanks the screen.
 - **Session logs that look after themselves:** optional text logs that
   rotate at 1 MB and stay under 10 MB in all, plus a connection audit log to
-  syslog/journald for administrators.
+  syslog/journald (the Application event log on Windows) for administrators.
+- **Administrator control:** a site policy that users can't change, limited
+  mode for shared workstations, shared sessions from a network folder, and
+  managed preferences on Macs.
 - **`cherminal-keycapture`:** records exactly what another emulator sends for
   each key, over Telnet, and saves it as a Cherminal keymap. This is how to
   carry an existing TinyTerm keyboard setup across.
@@ -89,13 +100,14 @@ Download `Cherminal-<version>-x86_64.AppImage` from a release (or the
 `appimage` workflow's artifact), copy it over, and run it:
 
 ```sh
-chmod +x Cherminal-0.2.0-x86_64.AppImage
-./Cherminal-0.2.0-x86_64.AppImage                 # same options as `cherminal`
-./Cherminal-0.2.0-x86_64.AppImage keycapture --name mykeys
+chmod +x Cherminal-<version>-x86_64.AppImage
+./Cherminal-<version>-x86_64.AppImage                 # same options as `cherminal`
+./Cherminal-<version>-x86_64.AppImage keycapture --name mykeys
 ```
 
-It carries its own Python and Qt and runs on x86_64 distributions from
-about 2019 onward (glibc 2.28+: RHEL/Rocky 8, Debian 10, Ubuntu 20.04).
+It carries its own Python and Qt (including the xcb libraries Qt's X11
+plugin needs) and runs on x86_64 distributions from about 2019 onward
+(glibc 2.28+: RHEL/Rocky 8, Debian 10, Ubuntu 20.04).
 If it reports a FUSE error, install `libfuse2` (or `fuse-libs`), or run it
 with `--appimage-extract-and-run`. Build one yourself with
 `packaging/build-appimage.sh`.
@@ -104,7 +116,9 @@ with `--appimage-extract-and-run`. Build one yourself with
 
 Run `cherminal --version` to see what you have (see
 [CHANGELOG.md](CHANGELOG.md) for what changed). For an AppImage, replace the
-file with the new one. For a pip install, from an updated checkout:
+file with the new one; on a Mac or Windows, install the new `.dmg`/`.pkg`
+or `.msi` over the old one. Sessions and settings are kept. For a pip
+install, from an updated checkout:
 
 ```sh
 git pull
@@ -118,13 +132,15 @@ pip install .
 cherminal                              # session manager
 cherminal --ssh me@server -e vt220
 cherminal --telnet 10.0.0.5 -e wyse60
+cherminal --telnet mf1:2323 -e ibm3278-2   # host:port
 cherminal --serial /dev/ttyUSB0 --baud 9600
 cherminal --local
 cherminal "Warehouse"                  # a saved session
 ```
 
-Requires Python 3.11+, PyQt6, paramiko and pyserial. For serial ports your
-user usually needs to be in the `dialout` group.
+Requires Python 3.11+, PyQt6, paramiko and pyserial (and pywinpty on
+Windows). For serial ports on Linux your user usually needs to be in the
+`dialout` group.
 
 To add Cherminal to the applications menu with its icon (for the current
 user, under `~/.local/share`), run `cherminal --install-desktop` once. This
@@ -143,7 +159,7 @@ Key names look like `F5`, `Shift+F1`, `Ctrl+Up`, `Keypad5`, `app:Up`
 caret notation, or `action:paste`, `action:break`, `action:macro:NAME`.
 
 ```toml
-# ~/.config/cherminal/keymaps/site.toml
+# ~/.config/cherminal/keymaps/site.toml (Linux; see the macOS and Windows guides)
 inherit = "wyse"
 [keys]
 Delete = "\\eW"
@@ -390,8 +406,8 @@ Then choose:
 
 - **Direction:** send to the host (PUT) or receive from it (GET).
 - **Host system:** TSO, CICS or VM/CMS, which changes the command's syntax.
-- **Host file:** a TSO data set such as `'CHAD.REPORT.TEXT'` or
-  `'CHAD.JCL(PAYROLL)'`, a CICS file name such as `PAYROLL`, or a CMS file
+- **Host file:** a TSO data set such as `'USERNAME.REPORT.TEXT'` or
+  `'USERNAME.JCL(PAYROLL)'`, a CICS file name such as `PAYROLL`, or a CMS file
   such as `PROFILE EXEC A`.
 - **Local file**, **Text** (EBCDIC translated with the session's character
   set; local files are UTF-8) or **Binary** (bytes unchanged), **CRLF**
@@ -402,8 +418,8 @@ Then choose:
 The dialog shows the command it will type, for example:
 
 ```text
-IND$FILE GET 'CHAD.REPORT.TEXT' ASCII CRLF                         (TSO)
-IND$FILE PUT 'CHAD.DATA' ASCII CRLF RECFM(V) LRECL(255) SPACE(5,5) TRACKS
+IND$FILE GET 'USERNAME.REPORT.TEXT' ASCII CRLF                         (TSO)
+IND$FILE PUT 'USERNAME.DATA' ASCII CRLF RECFM(V) LRECL(255) SPACE(5,5) TRACKS
 IND$FILE PUT PAYROLL (BINARY NOCRLF                                (CICS)
 IND$FILE PUT PROFILE EXEC A (ASCII CRLF RECFM V LRECL 80           (CMS)
 ```
@@ -515,6 +531,47 @@ menus drawn with structured fields (their text still shows), column
 separator lines, and the SysReq input line (SysReq goes straight to the
 host, which shows its System Request menu).
 
+## Modern view (3270 and 5250)
+
+View › **Modern view** (Ctrl+Shift+M), or the button beside the tabs,
+gives an IBM 3270 or 5250 screen a more familiar look without changing
+anything the host receives. It is only for 3270 and 5250 display sessions;
+VT, Wyse and other character terminals have no fields to work with.
+
+- Input fields are boxed, the field with the cursor is outlined, and a
+  click puts the cursor in a field.
+- A **key bar** under the screen turns the screen's own `F3=Exit` style
+  keys into buttons, with **More keys** (PA1, Clear, Attention, SysReq...)
+  and **Send**.
+- Numbered menu options and list rows can be clicked (double-click to
+  choose, and only with a code that views a row); the scroll wheel pages
+  with PF7/PF8 or Roll Up/Down.
+- Typing mistakes are explained under the field instead of locking the
+  keyboard, and changed fields get a dot.
+- **Graphite** (dark) and **Paper** (light) colours follow the desktop, or
+  pick one, or keep the session's colours (`modern_theme`).
+- A **breadcrumb** built from the screens' titles, a **history** of this
+  session's screens to look back at and copy from (memory only, never
+  hidden fields), and a **command palette** (Ctrl+K, ⌘K on a Mac) for the
+  session's transactions, macros, screen keys, recent screens and actions.
+- Edit › **Copy screen text** and **Export table as CSV…**.
+- **Custom layouts:** a rule file in a `layouts/` folder recognises a
+  screen and draws it as a form with text boxes, value cards, status
+  badges and tables. View › **Make layout from this screen…** writes a
+  starting rule.
+
+```toml
+view = "modern"              # how the session starts: "classic" or "modern"
+modern_theme = "auto"        # "auto", "graphite", "paper" or "session"
+[transactions]
+CUST01 = "Customer inquiry"
+```
+
+The site policy's `modern_view` (`"allowed"`, `"off"` or `"default"`) and
+`screen_history` control it for everyone. See "Modern view" in the
+[user guide](docs/USER.md#modern-view) and "Custom layouts" in the
+[administrator guide](docs/ADMIN.md#custom-layouts).
+
 ## Idle timeout, keep-alive and reconnecting
 
 Settings are on the session's **Idle & reconnect** tab.
@@ -539,7 +596,9 @@ Whenever a session has ended, press **Enter** in it to connect again.
 ## Session logs
 
 Turn on **Keep a log of this session's text** on the session's **Logging**
-tab. Logs go to `~/.local/state/cherminal/logs/<session>.log`. A log holds
+tab. Logs go to `~/.local/state/cherminal/logs/<session>.log` on Linux
+(`~/Library/Logs/Cherminal` on a Mac, `%LOCALAPPDATA%\Cherminal\Logs` on
+Windows). A log holds
 what the screen showed: lines as they scroll up, what was left on the
 screen at the end and, for IBM 3270 sessions, each screen as it was sent
 to the host. Hidden fields such as passwords are left blank, and
@@ -571,8 +630,10 @@ example together with a shared setup folder below.
 ## Site policy (administrators)
 
 An administrator can enforce settings that users cannot change, in
-`/etc/cherminal/policy.toml` (owned by root). Cherminal reads only that
-path, and no option or environment variable turns it off. Every setting is
+`/etc/cherminal/policy.toml` (owned by root) on Linux,
+`/Library/Application Support/Cherminal/policy.toml` or managed preferences
+on a Mac, and `%ProgramData%\Cherminal\policy.toml` on Windows. Cherminal
+reads only that path, and no option or environment variable turns it off. Every setting is
 optional; an empty file changes nothing.
 
 ```toml
@@ -591,12 +652,14 @@ log_dir = "/var/log/cherminal/%u" # where session logs go (%u = user name)
 log_total_mb = 10                 # all session logs together stay under this
 audit_log = true                  # connection log to syslog/journald
 ssh_known_hosts_only = true       # SSH only to hosts whose keys you provided
+modern_view = "allowed"           # 3270/5250 Modern view: "allowed", "off" or "default"
+screen_history = true             # false: Modern view keeps no past screens
 ```
 
 With `audit_log = true` each connection, disconnection and failed
 connection is written to syslog (journald) as one line with the user,
 session, host, what happened and how long it lasted, for example
-`user=chad session='Payroll' transport=telnet host=mf1:23 event=disconnected
+`user=username session='Payroll' transport=telnet host=mf1:23 event=disconnected
 detail='closed by the user; after 0h42m10s'`. Nothing typed or shown in a
 session is ever in it. Read it with `journalctl -t cherminal`.
 
@@ -636,13 +699,15 @@ the next time the Sessions window opens. Nothing needs to be imported, so
 it also works where the home folder is wiped at logoff. Cherminal looks in,
 first match wins:
 
-1. each folder in `$CHERMINAL_SITE_DIR` (`:`-separated), for example a
-   mounted network share;
+1. each folder in `$CHERMINAL_SITE_DIR` (`:`-separated, `;` on Windows),
+   for example a mounted network share;
 2. `cherminal-config/` next to the AppImage;
-3. `/etc/xdg/cherminal/` (each `$XDG_CONFIG_DIRS` folder).
+3. `/etc/xdg/cherminal/` (each `$XDG_CONFIG_DIRS` folder), or
+   `/Library/Application Support/Cherminal` on a Mac and
+   `%ProgramData%\Cherminal` on Windows.
 
-Each of these may hold `*.cherminal` files and `sessions/` and `keymaps/`
-folders laid out like `~/.config/cherminal`. If a user edits a shared
+Each of these may hold `*.cherminal` files and `sessions/`, `keymaps/` and
+`layouts/` folders laid out like `~/.config/cherminal`. If a user edits a shared
 session, their copy is saved in their own folder and shown as
 `[shared, edited here]`; deleting it goes back to the shared version.
 

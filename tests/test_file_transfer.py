@@ -29,7 +29,7 @@ class Server(paramiko.ServerInterface):
 
 
 def make_sftp(root):
-    """A minimal SFTP server whose "/" is ``root`` and whose home is /home/chad."""
+    """A minimal SFTP server whose "/" is ``root`` and whose home is /home/username."""
 
     class Handle(paramiko.SFTPHandle):
         def stat(self):
@@ -41,7 +41,7 @@ def make_sftp(root):
 
         def canonicalize(self, path):
             if not path.startswith("/"):
-                path = "/home/chad/" + path
+                path = "/home/username/" + path
             return posixpath.normpath(path)
 
         def stat(self, path):
@@ -86,7 +86,7 @@ def make_sftp(root):
 @pytest.fixture
 def host(tmp_path):
     root = tmp_path / "host"
-    (root / "home/chad/inbox").mkdir(parents=True)
+    (root / "home/username/inbox").mkdir(parents=True)
     host_key = paramiko.RSAKey.generate(2048)
     srv = socket.create_server(("127.0.0.1", 0))
     transports = []
@@ -111,7 +111,7 @@ def host(tmp_path):
 
 
 def connect(port, tmp_path):
-    t = SSHTransport("127.0.0.1", port, "chad", known_hosts=tmp_path / "known_hosts",
+    t = SSHTransport("127.0.0.1", port, "username", known_hosts=tmp_path / "known_hosts",
                      ask_password=lambda p: "secret", confirm_host_key=lambda *a: True)
     ready = threading.Event()
     t.on_data = lambda d: ready.set()
@@ -133,11 +133,11 @@ def test_upload_to_home_and_folder(host, tmp_path, monkeypatch):
     try:
         assert t.upload([str(src / "report.txt")],
                         progress=lambda n, d, total: seen.append((n, d, total)) or True) \
-            == ["/home/chad/report.txt"]
-        assert (root / "home/chad/report.txt").read_bytes() == b"hello\n" * 1000
+            == ["/home/username/report.txt"]
+        assert (root / "home/username/report.txt").read_bytes() == b"hello\n" * 1000
         assert seen[-1] == ("report.txt", 6000, 6000)
-        assert t.upload([str(src / "report.txt")], "~/inbox") == ["/home/chad/inbox/report.txt"]
-        assert t.upload([str(src / "report.txt")], "/home/chad/inbox") == []   # exists: kept
+        assert t.upload([str(src / "report.txt")], "~/inbox") == ["/home/username/inbox/report.txt"]
+        assert t.upload([str(src / "report.txt")], "/home/username/inbox") == []   # exists: kept
         with pytest.raises(OSError, match="not a folder"):
             t.upload([str(src / "report.txt")], "report.txt")
         with pytest.raises(OSError, match="not a file"):
@@ -150,7 +150,7 @@ def test_replace_and_cancel_keep_existing_file(host, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("SSH_AUTH_SOCK", raising=False)
     port, root = host
-    (root / "home/chad/data.csv").write_bytes(b"old")
+    (root / "home/username/data.csv").write_bytes(b"old")
     new = tmp_path / "data.csv"
     new.write_bytes(b"x" * 200_000)
     t = connect(port, tmp_path)
@@ -159,11 +159,11 @@ def test_replace_and_cancel_keep_existing_file(host, tmp_path, monkeypatch):
         with pytest.raises(UploadCancelled):
             t.upload([str(new)], replace=lambda p: asked.append(p) or True,
                      progress=lambda n, d, total: d < 50_000)
-        assert asked == ["/home/chad/data.csv"]
-        assert (root / "home/chad/data.csv").read_bytes() == b"old"
-        assert sorted(os.listdir(root / "home/chad")) == ["data.csv", "inbox"]
+        assert asked == ["/home/username/data.csv"]
+        assert (root / "home/username/data.csv").read_bytes() == b"old"
+        assert sorted(os.listdir(root / "home/username")) == ["data.csv", "inbox"]
         t.upload([str(new)], replace=lambda p: True)
-        assert (root / "home/chad/data.csv").read_bytes() == b"x" * 200_000
+        assert (root / "home/username/data.csv").read_bytes() == b"x" * 200_000
     finally:
         t.close()
 

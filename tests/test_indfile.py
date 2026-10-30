@@ -57,9 +57,9 @@ def message(text: bytes) -> list[bytes]:
 
 
 def test_commands_for_tso_cics_and_vm():
-    assert TransferOptions(True, "'CHAD.DATA'", "f", recfm="F", lrecl=80, blksize=3120,
+    assert TransferOptions(True, "'USERNAME.DATA'", "f", recfm="F", lrecl=80, blksize=3120,
                            space_units="cylinders", primary=2, secondary=1).command() == \
-        "IND$FILE PUT 'CHAD.DATA' ASCII CRLF RECFM(F) LRECL(80) BLKSIZE(3120) " \
+        "IND$FILE PUT 'USERNAME.DATA' ASCII CRLF RECFM(F) LRECL(80) BLKSIZE(3120) " \
         "SPACE(2,1) CYLINDERS"
     assert TransferOptions(True, "X", "f", space_units="avblock", primary=10,
                            avblock=800, ascii=False).command() == \
@@ -139,8 +139,8 @@ def test_start_types_the_command_and_presses_enter(tmp_path):
     em, screen, sent = emu()
     em.feed(record(READY))
     em.cursor = 0                                         # anywhere: it finds the field
-    em.start_transfer(TransferOptions(False, "'CHAD.JCL(TEST)'", str(tmp_path / "t")))
-    cmd = e("IND$FILE GET 'CHAD.JCL(TEST)' ASCII CRLF")
+    em.start_transfer(TransferOptions(False, "'USERNAME.JCL(TEST)'", str(tmp_path / "t")))
+    cmd = e("IND$FILE GET 'USERNAME.JCL(TEST)' ASCII CRLF")
     assert sent[-1] == b"\x7d" + sent[-1][1:3] + b"\x11" + addr(22, 6) + cmd
     assert em.locked
     with pytest.raises(ValueError):
@@ -296,9 +296,9 @@ def test_receive_from_tso(tmp_path):
     s = _connect(tmp_path, host)
     try:
         out = tmp_path / "report.txt"
-        result, progress = _run(s, TransferOptions(False, "'CHAD.REPORT'", str(out)), host)
+        result, progress = _run(s, TransferOptions(False, "'USERNAME.REPORT'", str(out)), host)
         assert result == {"ok": True, "msg": "TRANS03 File transfer complete"}
-        assert host.command == "IND$FILE GET 'CHAD.REPORT' ASCII CRLF"
+        assert host.command == "IND$FILE GET 'USERNAME.REPORT' ASCII CRLF"
         assert out.read_text() == text.replace("\r\n", "\n")
         assert progress[-1] == (len(text), 0)
         deadline = time.monotonic() + 2
@@ -336,7 +336,7 @@ def test_cancel_an_upload(tmp_path):
     try:
         done = threading.Event()
         result = {}
-        s.start_transfer(TransferOptions(True, "'CHAD.BIG'", str(src)),
+        s.start_transfer(TransferOptions(True, "'USERNAME.BIG'", str(src)),
                          on_progress=lambda n, t: s.cancel_transfer() if n else None,
                          on_done=lambda ok, msg: (result.update(ok=ok, msg=msg), done.set()))
         assert done.wait(10)

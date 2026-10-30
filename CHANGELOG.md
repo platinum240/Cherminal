@@ -3,6 +3,14 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.13.1
+
+- Documentation: the README now covers Modern view, macOS and Windows
+  (installers, folders, site policy and shared setup paths), `host:port`
+  and the AppImage's bundled xcb libraries; docs/SPEC.md describes what is
+  done today. Examples use `username` instead of a real person's name.
+  No change to the program itself.
+
 ## 0.13.0
 
 - Windows: Cherminal runs on 64-bit Windows 10 and 11. Each release has an
