@@ -15,7 +15,7 @@ jobs:
           python-version: "3.12"
       - name: Build AppImage
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q libfuse2 xvfb
+          sudo apt-get update -q && sudo apt-get install -y -q libfuse2 xvfb libegl1 libgl1
           pip install python-appimage
           packaging/build-appimage.sh
       - name: Smoke test
