@@ -15,7 +15,7 @@ jobs:
           python-version: "3.12"
       - name: Build AppImage
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q libfuse2
+          sudo apt-get update -q && sudo apt-get install -y -q libfuse2 xvfb
           pip install python-appimage
           packaging/build-appimage.sh
       - name: Smoke test
@@ -34,6 +34,14 @@ jobs:
           tree=$(ls -d dist/cherminal-elux-*/)
           XDG_CONFIG_HOME=$(mktemp -d) "$tree/input/cherminal/opt/cherminal/AppRun" --version
           XDG_CONFIG_HOME=$(mktemp -d) "$tree/input/cherminal/opt/cherminal/AppRun" --list
+          # The slimmed Qt must still open a window on X11: still running after
+          # 10 seconds (timeout's 124) means it started; a missing library
+          # makes Qt abort straight away.
+          status=0
+          XDG_CONFIG_HOME=$(mktemp -d) timeout 10 xvfb-run -a \
+              "$tree/input/cherminal/opt/cherminal/AppRun" || status=$?
+          [ "$status" -eq 124 ] || { echo "Cherminal exited with $status" >&2; exit 1; }
+          du -sh dist/*.AppImage "$tree/input"
       - uses: actions/upload-artifact@v4
         with:
           name: Cherminal-eLux-package-tree
