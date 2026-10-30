@@ -8,7 +8,7 @@ Check what you are running with `cherminal --version` (or
 - Smaller AppImage and eLux package: the build leaves out the parts of Qt
   that Cherminal never loads (QML, Quick 3D, Multimedia with its FFmpeg,
   WebSockets, Designer and the rest) and Python's test suite, Tk and build
-  headers. The unpacked app goes from about 340 MB to about 130 MB. The
+  headers. The unpacked app goes from about 340 MB to about 155 MB. The
   eLux package also leaves out Wayland, which eLux doesn't use.
 - eLux: `build-epm.sh` prints the package size and warns about links that
   point outside `/opt/cherminal`; packaging/elux/README.md has a checklist

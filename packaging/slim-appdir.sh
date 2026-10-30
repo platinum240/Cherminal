@@ -73,6 +73,10 @@ done
 for lib in "$qt"/lib/*; do
     name=$(basename "$lib")
     [ -n "${keep[$name]:-}" ] && continue
+    # Only Qt's own libraries and Qt Multimedia's FFmpeg go: Qt opens others,
+    # such as the bundled libxcb-cursor, by name at run time, so no file
+    # lists them as needed.
+    [[ "$name" == libQt6* || "$name" == libav* || "$name" == libsw* ]] || continue
     # A symlink stays if it points at a library that stays.
     [ -L "$lib" ] && [ -n "${keep[$(basename "$(readlink "$lib")")]:-}" ] && continue
     rm -rf "$lib"

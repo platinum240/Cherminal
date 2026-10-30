@@ -40,7 +40,7 @@ for eLux RP6 64-bit use `containers=1024`.
 
 ## Size
 
-The package tree is about 130 MB unpacked (`build-epm.sh` prints the exact
+The package tree is about 155 MB unpacked (`build-epm.sh` prints the exact
 figure); the `.fpm` is compressed and smaller. Most of it is Qt (with ICU,
 about 40 MB, which Qt needs for text) and Python. `packaging/slim-appdir.sh`
 leaves out the Qt modules, plugins and Python parts Cherminal never loads;
