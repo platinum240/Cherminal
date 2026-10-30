@@ -38,6 +38,38 @@ follow Unicon's epkg documentation but have not yet been built with a real
 Kit, which opens the same tree. The target is eLux 7 (`containers=2048`);
 for eLux RP6 64-bit use `containers=1024`.
 
+## Size
+
+The package tree is about 155 MB unpacked (`build-epm.sh` prints the exact
+figure); the `.fpm` is compressed and smaller. Most of it is Qt (with ICU,
+about 40 MB, which Qt needs for text) and Python. `packaging/slim-appdir.sh`
+leaves out the Qt modules, plugins and Python parts Cherminal never loads;
+before 0.13.2 the package was about 340 MB.
+
+## If the package won't install
+
+Check these in Scout before digging through logs:
+
+- **Flash space.** The image (firmware plus every package assigned) has to
+  fit the client's flash, with room to download the update. Compare the
+  device's flash size in Scout with the image size ELIAS shows.
+- **eLux version.** `containers=2048` targets eLux 7; a client on eLux RP6
+  ignores or rejects the package. Use `containers=1024` for RP6 64-bit
+  (in `ebkepm.in` and `--container` for `epkg`).
+- **Architecture.** The package is `amd64` only (64-bit x86 clients).
+- **Signature.** `--releaseType test` packages are signed with the SDK's
+  test key; the client must have the signing certificate in
+  `/setup/cacerts/` (deploy it from Scout), or the package is refused.
+- **Libraries on the client.** Cherminal needs X11, fontconfig, freetype,
+  EGL/GL, D-Bus and glibc 2.28 or later from eLux itself. With
+  `checkMissingFiles=true`, files the package needs but doesn't have are
+  reported, so the slimmer package also has fewer things to report.
+
+On the client, the update and package logs are in `/var/log` (open a local
+terminal if your Scout profile allows one). The easiest way to get them all
+is a diagnostic file: request it from the device in Scout (Diagnostics), or
+create it on the client in the Control Panel and save it to a USB stick.
+
 ## What gets installed
 
 | Path | |

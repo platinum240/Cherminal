@@ -3,6 +3,19 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.13.2
+
+- Smaller AppImage and eLux package: the build leaves out the parts of Qt
+  that Cherminal never loads (QML, Quick 3D, Multimedia with its FFmpeg,
+  WebSockets, Designer and the rest) and Python's test suite, Tk and build
+  headers. The unpacked app goes from about 340 MB to about 155 MB. The
+  eLux package also leaves out Wayland, which eLux doesn't use.
+- eLux: `build-epm.sh` prints the package size and warns about links that
+  point outside `/opt/cherminal`; packaging/elux/README.md has a checklist
+  for packages that won't install.
+- CI starts the eLux build's Cherminal on an X server to check that the
+  slimmed Qt still opens a window.
+
 ## 0.13.1
 
 - Documentation: the README now covers Modern view, macOS and Windows

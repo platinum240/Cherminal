@@ -80,6 +80,9 @@ for soname in libxcb-cursor.so.0 libxcb-util.so.1 libxcb-image.so.0 libxcb-keysy
         || { echo "$soname not bundled: ${found:-not found}" >&2; exit 1; }
 done
 
+# Leave out the parts of Qt and Python that Cherminal never loads (about 200 MB).
+packaging/slim-appdir.sh "$appdir"
+
 ( cd "$work" && python3 -c "from python_appimage.appimage import build_appimage
 build_appimage('Cherminal-x86_64', destination='Cherminal-x86_64.AppImage')" )
 mv "$work"/Cherminal-x86_64.AppImage "dist/Cherminal-$version-x86_64.AppImage"

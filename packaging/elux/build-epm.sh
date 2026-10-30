@@ -27,6 +27,15 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 ( cd "$work" && "$appimage" --appimage-extract >/dev/null )
 mv "$work/squashfs-root" "$fpm/opt/cherminal"
+# AppImages from 0.13.2 on are slimmed already; this also covers older ones,
+# and leaves out Wayland, which eLux doesn't use.
+packaging/slim-appdir.sh --x11-only "$fpm/opt/cherminal"
+# Links that point outside the package would dangle on the client.
+outside=$(find "$fpm/opt/cherminal" -type l | while read -r link; do
+              target=$(realpath -m "$link")
+              [[ "$target" == "$(realpath "$fpm/opt/cherminal")"/* ]] || echo "  $link -> $(readlink "$link")"
+          done)
+[ -z "$outside" ] || echo "Warning: links that leave /opt/cherminal:"$'\n'"$outside" >&2
 
 # Commands on the PATH, and the menu entry with its icons.
 mkdir -p "$fpm/usr/bin"
@@ -57,6 +66,7 @@ if [ -f "$here/site/policy.toml" ]; then
 fi
 cp "$here/control" "$tree/elux/control"
 
+echo "Package contents: $(du -sm "$tree/input" | cut -f1) MB unpacked"
 if command -v epkg >/dev/null; then
     ( cd "$tree" && epkg Build --container elux7 --releaseType "${RELEASE_TYPE:-test}" )
     echo "Built the eLux package in $tree/output/container/"
