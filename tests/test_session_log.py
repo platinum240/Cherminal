@@ -70,13 +70,13 @@ def test_logging_is_off_by_default(tmp_path):
 def test_vt_session_log_hides_hidden_text(tmp_path):
     s, _ = session(tmp_path, log_session=True, rows=5)
     s.connect()
-    s.feed(b"login: chad\r\nPassword: \x1b[8mhunter2\x1b[0m\r\n")
+    s.feed(b"login: username\r\nPassword: \x1b[8mhunter2\x1b[0m\r\n")
     s.feed(b"".join(b"line %d\r\n" % i for i in range(10)))
     s.send_text("typed secret")                   # keystrokes are not logged
     s.disconnect()
     text = log_text(tmp_path)
     assert "Payroll: connected to mainframe.example.com:23 (telnet, vt220)" in text
-    assert "login: chad" in text and "line 0" in text and "line 9" in text
+    assert "login: username" in text and "line 0" in text and "line 9" in text
     assert "hunter2" not in text and "typed secret" not in text
     assert text.count("line 9") == 1              # the screen at the end is written once
     assert "disconnected: closed by the user ====" in text
@@ -106,14 +106,14 @@ def test_block_mode_logs_each_screen_sent(tmp_path):
     s, host = session(tmp_path, emulation="ibm3278-2", log_session=True)
     s.connect()
     s.feed(record(LOGON))
-    s.send_text("CHAD")
+    s.send_text("USERNAME")
     s.key("Tab")
     s.send_text("hunter2")
     s.key("Enter")
     s.key("Enter")                                # same screen again: not repeated
     s.disconnect()
     text = log_text(tmp_path)
-    assert "USERID===>CHAD" in text.replace(" ", "")
+    assert "USERID===>USERNAME" in text.replace(" ", "")
     assert "PASSWORD  ===>" in text and "hunter2" not in text
     assert text.count("---- screen at") == 1
 

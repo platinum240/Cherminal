@@ -1,8 +1,9 @@
 # Cherminal specification
 
-Cherminal is a Linux terminal emulator for connecting to host systems
-(Unix servers, legacy line-of-business apps, network gear, serial devices)
-in the spirit of Century Software's TinyTerm. Linux has many good *xterm*
+Cherminal is a terminal emulator for connecting to host systems (Unix
+servers, IBM mainframes and IBM i, legacy line-of-business apps, network
+gear, serial devices) in the spirit of Century Software's TinyTerm. It
+started on Linux and now also runs on macOS and Windows. Linux has many good *xterm*
 terminals, but few that emulate the terminals legacy host applications were
 written for, and none that make per-host key mapping and saved connection
 profiles a first-class feature. That gap is what Cherminal fills.
@@ -33,7 +34,7 @@ it `UNVERIFIED` so it can be checked against real hardware or a manual.
 
 ## Feature scope
 
-| Area | Target | Status in this PR |
+| Area | Target | Status |
 |---|---|---|
 | Emulations | VT100, VT220, VT320, VT420, ANSI (SCO console), AT386, Linux console, xterm, Wyse 50, Wyse 60, TVI 925/950, ADM-3A | All present; VT/ANSI family is the most complete, TVI/ADM share the Wyse core |
 | Emulations, later | IBM 3101/3151, TVI 912, TTY, VT 7-bit variants | Later phase |
@@ -42,17 +43,19 @@ it `UNVERIFIED` so it can be checked against real hardware or a manual.
 | Function-key bar | Clickable buttons bound to macros | Done (toolbar from profile macros) |
 | Connections | SSH, Telnet, serial, local shell | All four |
 | Key mapping | Per-emulation defaults, user keymap files, per-session overrides, mode-aware keys (cursor/keypad application mode), actions and macros | Done, with a GUI capture editor |
-| Saved configs | Named session profiles, one TOML file each, under `$XDG_CONFIG_HOME/cherminal` | Done |
+| Saved configs | Named session profiles, one TOML file each, under `$XDG_CONFIG_HOME/cherminal` (the platform's own folders on macOS and Windows) | Done, plus `.cherminal` export files and shared setup folders |
 | UI | Tabbed sessions, session manager, quick connect, copy/paste, scrollback, colours | Done (PyQt6) |
 | Telnet options | BINARY, ECHO, SGA, TTYPE, NAWS | Done |
-| Site policy | Admin-enforced `/etc/cherminal/policy.toml`: limited mode, allowed transports, upload, print to file, optional TLS / certificate checks, extra CA | Done |
+| Site policy | Admin-enforced `/etc/cherminal/policy.toml`: limited mode, allowed transports, upload, print to file, optional TLS / certificate checks, extra CA, idle timeout, logging, audit log, Modern view | Done (also macOS managed preferences and `%ProgramData%` on Windows) |
 | Macros | Named byte strings bound to keys or a menu | Done |
-| File transfer | XMODEM, YMODEM, ZMODEM, Kermit | Later phase |
-| Printing | Transparent / pass-through print (`CSI 5i`/`CSI 4i`, Wyse `ESC d#`) to a file or `lp` | Later phase |
+| File transfer | SFTP upload over SSH; IND$FILE for 3270; XMODEM, YMODEM, ZMODEM, Kermit | SFTP and IND$FILE done; the serial protocols later |
+| Printing | Print screen; transparent / pass-through print (`CSI 5i`/`CSI 4i`, Wyse `ESC d#`) to a file or `lp`; 3287 printer sessions | Print screen, VT passthrough and 3287 done; Wyse passthrough later |
 | Scripting | Expect-style login scripts | Later phase |
-| Hotspots | Clickable on-screen text (e.g. `F3=Exit`) that sends a key | Later phase |
-| IBM 3270 | Block-mode emulation over TN3270 (RFC 1576), 3278 models 2-5, 3279 colour, query replies | Present (`emulation/ibm3270.py`); TN3270E, printing and file transfer later |
-| IBM 5250 | Block-mode emulation for IBM i over TN5250 (RFC 1205, 2877/4777 device names), 3179-2, 5251-11, 3477-FC | Present (`emulation/ibm5250.py`); printer sessions later |
+| Hotspots | Clickable on-screen text (e.g. `F3=Exit`) that sends a key | Done for 3270 (and Modern view's key bar) |
+| IBM 3270 | Block-mode emulation over TN3270 (RFC 1576) and TN3270E (RFC 2355), 3278 models 2-5, 3279 colour, query replies | Done, with LU names, 3287 printing and IND$FILE |
+| IBM 5250 | Block-mode emulation for IBM i over TN5250 (RFC 1205, 2877/4777 device names), 3179-2, 5251-11, 3477-FC | Done; printer sessions later |
+| Modern view | A friendlier front end for 3270/5250 screens: boxed fields, key bar, themes, breadcrumbs, history, command palette, CSV export, custom layouts | Done; the host sees the same keys and field data |
+| Platforms | Linux (AppImage, pip, eLux), macOS (`.dmg`/`.pkg`), Windows (`.msi`, portable `.zip`) | Done |
 
 ## Architecture
 
@@ -60,11 +63,20 @@ it `UNVERIFIED` so it can be checked against real hardware or a manual.
 cherminal/
   screen.py          Character grid, cursor, attributes, scrolling, scrollback
   emulation/         Byte stream -> screen operations, one parser per family
-    vt.py            VT100/VT220/ANSI-SCO/Linux/xterm (ECMA-48 state machine)
+    vt.py            VT100/VT220/SCO ANSI/Linux/xterm (ECMA-48 state machine)
     wyse.py          Wyse 50/60 native mode
+    ibm3270.py       3278/3279 display, with tn3270e.py, ibm3287.py (printer)
+                     and indfile.py (IND$FILE)
+    ibm5250.py       5250 display stations
+    hotspots.py, navigation.py, choices.py
+                     Screen reading for clickable keys, menus and lists
   keymap.py          Key names, default keymaps, layering, escape notation
   config.py          Session profiles and keymap files (TOML)
-  transport/         Byte pipes: local PTY, Telnet, SSH (paramiko), serial (pyserial)
+  layouts.py         Custom layout rules for Modern view
+  policy.py          Site policy
+  system.py          Per-platform folders (Linux, macOS, Windows)
+  transport/         Byte pipes: local PTY (ConPTY on Windows), Telnet, SSH
+                     (paramiko), serial (pyserial)
   gui/               PyQt6 front end; the only package that imports Qt
 ```
 

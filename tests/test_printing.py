@@ -58,9 +58,9 @@ def test_render_to_pdf(app, tmp_path):
     from cherminal.gui.printing import render, screen_lines
     from cherminal.gui.terminal import TerminalWidget
     term = TerminalWidget(session(tmp_path))
-    term.session.feed(b"USERID ===> CHAD\r\nPASSWORD ===> \x1b[8msecret\x1b[0m\r\n")
+    term.session.feed(b"USERID ===> USERNAME\r\nPASSWORD ===> \x1b[8msecret\x1b[0m\r\n")
     lines = screen_lines(term)
-    assert lines[:2] == ["USERID ===> CHAD", "PASSWORD ===>"]       # hidden field blank
+    assert lines[:2] == ["USERID ===> USERNAME", "PASSWORD ===>"]       # hidden field blank
     printer = QPrinter()
     printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
     out = tmp_path / "screen.pdf"
@@ -70,7 +70,7 @@ def test_render_to_pdf(app, tmp_path):
     if shutil.which("pdftotext"):
         text = subprocess.run(["pdftotext", str(out), "-"], capture_output=True,
                               text=True).stdout
-        assert "USERID ===> CHAD" in text and "secret" not in text
+        assert "USERID ===> USERNAME" in text and "secret" not in text
         assert "\f" in text.rstrip("\f")                            # ran onto a second page
 
 

@@ -40,7 +40,7 @@ def test_windows_folders(windows):
     assert system.site_config_dirs() == [windows / "ProgramData/Cherminal"]
     assert system.policy_path() == windows / "ProgramData/Cherminal/policy.toml"
     assert system.system_known_hosts() == windows / "ProgramData/ssh/ssh_known_hosts"
-    assert system.managed_prefs_paths("chad") == []
+    assert system.managed_prefs_paths("username") == []
 
 
 def test_windows_folders_without_variables(windows, monkeypatch):

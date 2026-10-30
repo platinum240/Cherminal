@@ -9,7 +9,7 @@ from cherminal.transport.ssh import SSHTransport
 
 class PasswordServer(paramiko.ServerInterface):
     def check_auth_password(self, username, password):
-        ok = (username, password) == ("chad", "secret")
+        ok = (username, password) == ("username", "secret")
         return paramiko.AUTH_SUCCESSFUL if ok else paramiko.AUTH_FAILED
 
     def get_allowed_auths(self, username):
@@ -66,7 +66,7 @@ def test_password_prompt_when_no_keys_or_agent(ssh_server, tmp_path, monkeypatch
         prompts.append(prompt)
         return "secret"
 
-    t = SSHTransport("127.0.0.1", ssh_server, "chad", known_hosts=tmp_path / "known_hosts",
+    t = SSHTransport("127.0.0.1", ssh_server, "username", known_hosts=tmp_path / "known_hosts",
                      ask_password=ask, confirm_host_key=lambda *a: True)
     got, closed = [], []
     ready = threading.Event()
@@ -76,17 +76,17 @@ def test_password_prompt_when_no_keys_or_agent(ssh_server, tmp_path, monkeypatch
     assert ready.wait(10)
     t.close()
     assert closed == [] or not closed[0].startswith("SSHException"), closed
-    assert prompts == ["Password for chad@127.0.0.1:"]
+    assert prompts == ["Password for username@127.0.0.1:"]
     assert b"welcome" in b"".join(got)
 
 
 def test_login_prompt_asks_user_and_password(ssh_server, tmp_path, monkeypatch):
-    # The workstation user ("bob") is not the host login ("chad").
+    # The workstation user ("bob") is not the host login ("username").
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USER", "bob")
     monkeypatch.delenv("SSH_AUTH_SOCK", raising=False)
     asked = []
-    answers = iter([("chad", "wrong"), ("chad", "secret")])
+    answers = iter([("username", "wrong"), ("username", "secret")])
 
     def ask_login(host, user, error):
         asked.append((host, user, error))
@@ -104,13 +104,13 @@ def test_login_prompt_asks_user_and_password(ssh_server, tmp_path, monkeypatch):
     t.close()
     assert b"welcome" in b"".join(got), closed
     # First prompt suggests no user (not the workstation's); the retry says why.
-    assert asked == [("127.0.0.1", "", ""), ("127.0.0.1", "chad", "Login incorrect. Try again.")]
+    assert asked == [("127.0.0.1", "", ""), ("127.0.0.1", "username", "Login incorrect. Try again.")]
 
 
 def test_login_prompt_cancel(ssh_server, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("SSH_AUTH_SOCK", raising=False)
-    t = SSHTransport("127.0.0.1", ssh_server, "chad", known_hosts=tmp_path / "known_hosts",
+    t = SSHTransport("127.0.0.1", ssh_server, "username", known_hosts=tmp_path / "known_hosts",
                      confirm_host_key=lambda *a: True, ask_login=lambda *a: None)
     closed = []
     ready = threading.Event()
@@ -136,7 +136,7 @@ def test_admin_known_hosts_and_strict_policy(ssh_host, tmp_path, monkeypatch):
     asked = []
 
     def run(**kw):
-        t = SSHTransport("127.0.0.1", port, "chad", known_hosts=tmp_path / "mine",
+        t = SSHTransport("127.0.0.1", port, "username", known_hosts=tmp_path / "mine",
                          ask_password=lambda p: "secret",
                          confirm_host_key=lambda *a: asked.append(a) or True, **kw)
         done = threading.Event()

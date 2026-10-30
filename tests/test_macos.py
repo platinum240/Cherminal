@@ -61,7 +61,7 @@ def test_linux_folders_unchanged(monkeypatch, tmp_path):
     assert system.config_dir() == tmp_path / ".config/cherminal"
     assert system.log_dir() == tmp_path / ".local/state/cherminal/logs"
     assert system.site_config_dirs() == [Path("/etc/xdg/cherminal")]
-    assert system.managed_prefs_paths("chad") == []
+    assert system.managed_prefs_paths("username") == []
 
 
 def test_fonts(monkeypatch):
@@ -96,9 +96,9 @@ def write_plist(path: Path, data) -> Path:
 
 def test_managed_prefs_paths(mac):
     name = "io.github.platinum240.cherminal.plist"
-    assert system.managed_prefs_paths("chad") == [
+    assert system.managed_prefs_paths("username") == [
         Path("/Library/Managed Preferences") / name,
-        Path("/Library/Managed Preferences/chad") / name]
+        Path("/Library/Managed Preferences/username") / name]
 
 
 def test_plist_policy(tmp_path):
@@ -126,7 +126,7 @@ def test_managed_prefs_override_file_and_user_overrides_computer(monkeypatch, tm
     toml = tmp_path / "policy.toml"
     toml.write_text('max_idle_timeout = 30\naudit_log = true\n')
     computer = write_plist(tmp_path / "mp/x.plist", {"max_idle_timeout": 10, "limited": True})
-    user = write_plist(tmp_path / "mp/chad/x.plist", {"limited": False})
+    user = write_plist(tmp_path / "mp/username/x.plist", {"limited": False})
     monkeypatch.setattr(policy, "managed_prefs_paths", lambda: [computer, user])
     rules = policy.load(toml)
     assert rules.audit_log and rules.max_idle_timeout == 10 and not rules.limited

@@ -194,7 +194,7 @@ def test_ssh_drop_versus_exit(tmp_path, monkeypatch):
             chans.append((t, t.accept(10)))
 
     threading.Thread(target=serve, daemon=True).start()
-    s = session(tmp_path, transport="ssh", port=srv.getsockname()[1], username="chad")
+    s = session(tmp_path, transport="ssh", port=srv.getsockname()[1], username="username")
     try:
         for exit_cleanly in (False, True):
             opened = len([c for c in chans if c[1]])
