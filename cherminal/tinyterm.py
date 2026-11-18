@@ -215,8 +215,11 @@ def to_profile(tpx: TpxFile, name: str) -> tuple[SessionProfile, list[str]]:
         data["username"] = user
     if tpx.get(emu, "password").strip():
         notes.append("the saved password was not imported; Cherminal never stores passwords")
-    if tpx.int(emu, "login"):
-        notes.append("TinyTERM's automatic login script was not imported")
+    if data["transport"] == "telnet" and not block_mode and tpx.get(emu, "loginscheme").strip():
+        # TinyTERM asks for a user name and password before connecting and
+        # answers the host's login: and Password: prompts (its "UNIX
+        # Password" login scheme); Cherminal's Telnet login does the same.
+        data["ask_login"] = True
     keymap_file = tpx.get(emu, "KeymapFile") or tpx.get(emu, "keyboardfile")
     if keymap_file.strip():
         notes.append(f"keyboard file {keymap_file.strip()} was not imported; "

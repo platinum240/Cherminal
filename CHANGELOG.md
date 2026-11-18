@@ -5,6 +5,13 @@ Check what you are running with `cherminal --version` (or
 
 ## 0.14.1
 
+- Telnet login: with **Ask for user name and password when connecting**
+  on a Telnet session, Cherminal asks before it connects, passes the user
+  name to hosts that ask for it during Telnet negotiation (NEW-ENVIRON
+  USER), sends Enter and answers the host's `login:` and `Password:`
+  prompts once each, like TinyTERM's UNIX login. The password is kept only
+  for the open session. Sessions imported from TinyTERM `.tpx` files with a
+  login scheme have it turned on, which fixes hosts that hung up on them.
 - Telnet trace: with `CHERMINAL_TRACE` set to a file name, every byte a
   Telnet session sends and receives is written there, with the connection
   and how it ended, to find out why a host hangs up. See Troubleshooting in

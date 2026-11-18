@@ -108,8 +108,11 @@ What is carried over: the host (TinyTERM keeps a history of hosts in the
 file; the first, the one it connects to, is used and the others are listed
 in the notes), port, Telnet or serial line settings, emulation, columns and
 rows, scrollback, text and background colours, character set, Backspace and
-Enter, answerback and user name. What is not: passwords (Cherminal never
-stores them), TinyTERM's login scripts, toolbar, printers, fonts and window
+Enter, answerback and user name. When the file has TinyTERM's
+UNIX login scheme, the session asks for a user name and password before it
+connects and answers the host's `login:` and `Password:` prompts, as
+TinyTERM does. What is not carried over: saved passwords (Cherminal never
+stores them), other TinyTERM login scripts, toolbar, printers, fonts and window
 position. TinyTERM keyboard files are not read; use `cherminal-keycapture`
 as below.
 
@@ -546,7 +549,7 @@ default.
 | `lu_name` | | TN3270E LU to connect to (display or printer), up to 8 characters. |
 | `username` | your login | SSH user name. |
 | `identity_file` | | SSH private key file. |
-| `ask_login` | `false` | SSH: ask for user name and password when connecting. |
+| `ask_login` | `false` | SSH: ask for user name and password when connecting. Telnet: ask before connecting, then answer the host's `login:` and `Password:` prompts. |
 | `file_transfer` | `false` | SSH: allow uploading dropped files (SFTP). |
 | `upload_dir` | home folder | SSH: where uploads go; `~/` means the home folder. |
 | `command` | login shell | Local shell: program to run. |

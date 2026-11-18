@@ -37,7 +37,9 @@ def _make(profile, ask_password, confirm_host_key, ask_login) -> Transport:
                                # TN3270E for printers, and for displays given an LU name
                                tn3270e=getattr(emu, "tn3270", False)
                                and (emu.printer or bool(profile.lu_name)),
-                               lu_name=profile.lu_name, printer=emu.printer)
+                               lu_name=profile.lu_name, printer=emu.printer,
+                               username=profile.username,
+                               ask_login=ask_login if profile.ask_login else None)
     if profile.transport == "ssh":
         from .ssh import SSHTransport
         return SSHTransport(profile.host, profile.effective_port, profile.username,
