@@ -336,11 +336,14 @@ def test_auto_reconnect_after_drop(app, tmp_path, host, monkeypatch):
 
 
 def test_no_auto_reconnect_unless_enabled(app, tmp_path, host):
-    for kw, rules in (({}, Policy()), ({"auto_reconnect": True}, Policy(auto_reconnect=False))):
+    cases = (({}, Policy()), ({"auto_reconnect": True}, Policy(auto_reconnect=False)))
+    for n, (kw, rules) in enumerate(cases, 1):
         policy.set_current(rules)
         term = terminal(tmp_path, port=host.port, **kw)
         term.connect_session()
         assert pump(app, lambda: term.session.connected)
+        # The client can see its connection before the accept thread records it.
+        assert pump(app, lambda: len(host.conns) == n)
         before = len(host.conns)
         host.drop()
         assert pump(app, lambda: term.ended)
