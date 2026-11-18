@@ -9,6 +9,8 @@
     cherminal --list                  print saved sessions
     cherminal --export site.cherminal "Mainframe A" "Mainframe B"
     cherminal --import site.cherminal
+    cherminal --import Atlanta.tpx    add TinyTERM session files as saved sessions
+    cherminal Atlanta.tpx             open a TinyTERM session file without saving it
     cherminal --limited "Mainframe A"  locked down: File menu is Close tab / Exit only
     cherminal --install-desktop       add Cherminal to the desktop menu with its icon
     cherminal --check-policy FILE     check a site policy file (.toml or .plist) before deploying it
@@ -26,7 +28,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-from . import __version__, emulation, policy, system
+from . import __version__, emulation, policy, system, tinyterm
 from .config import ProfileStore, SessionProfile
 
 
@@ -41,7 +43,13 @@ def build_profiles(args, store: ProfileStore) -> list[SessionProfile]:
     common = {}
     if args.emulation:
         common["emulation"] = args.emulation
-    profiles = [store.load(name) for name in args.sessions]
+    profiles = []
+    for name in args.sessions:
+        if tinyterm.is_tpx(name) and Path(name).is_file():
+            # Double-clicking a .tpx file: open it as it is, saving nothing.
+            profiles.append(tinyterm.read(name)[0])
+        else:
+            profiles.append(store.load(name))
     if args.ssh:
         user, host, port = _host_port(args.ssh)
         profiles.append(SessionProfile(name=host, transport="ssh", host=host, port=port,
@@ -61,7 +69,8 @@ def build_profiles(args, store: ProfileStore) -> list[SessionProfile]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="cherminal", description="Cherminal terminal emulator")
-    ap.add_argument("sessions", nargs="*", help="saved session names to open")
+    ap.add_argument("sessions", nargs="*",
+                    help="saved session names, or TinyTERM .tpx files, to open")
     ap.add_argument("--ssh", metavar="[USER@]HOST[:PORT]")
     ap.add_argument("--telnet", metavar="HOST[:PORT]")
     ap.add_argument("--serial", metavar="DEVICE")
@@ -73,7 +82,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="save the named sessions (all if none named) and their keymaps "
                          "to one file, then exit")
     ap.add_argument("--import", dest="import_", metavar="FILE", action="append",
-                    help="add the sessions and keymaps in FILE, replacing same-named ones")
+                    help="add the sessions and keymaps in FILE (a .cherminal bundle or a "
+                         "TinyTERM .tpx file), replacing same-named ones")
     ap.add_argument("--limited", action="store_true",
                     help="lock the menus: no session editing, new connections or local "
                          "shell; File offers only Close tab and Exit")
@@ -128,6 +138,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"exported {len(names)} session(s) to {args.export}")
             return 0
         for path in args.import_ or []:
+            if tinyterm.is_tpx(path):
+                profile, notes = tinyterm.read(path)
+                store.save(profile)
+                print(f"imported {profile.name} from {path}")
+                for note in notes:
+                    print(f"  note: {note}")
+                continue
             names = store.import_bundle(path)
             print(f"imported {', '.join(names) or 'no sessions'} from {path}")
         if args.import_ and not args.sessions:

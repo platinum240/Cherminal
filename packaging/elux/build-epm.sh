@@ -51,6 +51,10 @@ for png in cherminal/resources/cherminal-[0-9]*.png; do
 done
 install -D -m 644 cherminal/resources/cherminal.svg \
     "$fpm/usr/share/icons/hicolor/scalable/apps/cherminal.svg"
+# The MIME type that lets a double-clicked TinyTERM .tpx file open in Cherminal.
+mkdir -p "$fpm/usr/share/mime/packages"
+python3 -I -c 'import sys; sys.path.insert(0, "."); from cherminal.desktop import MIME_XML; print(MIME_XML, end="")' \
+    > "$fpm/usr/share/mime/packages/cherminal.xml"
 install -D -m 644 "$here/policy.toml.example" "$fpm/etc/cherminal/policy.toml.example"
 install -D -m 644 LICENSE "$fpm/usr/share/doc/cherminal/LICENSE"
 

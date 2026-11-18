@@ -27,7 +27,9 @@ standards (DEC VT100/VT220 manuals, ECMA-48, Wyse 50/60 programmer guides,
 RFC 854/857/858/1073/1091 for Telnet). No TinyTerm binaries were
 decompiled, disassembled or inspected, and no proprietary code, file
 formats, artwork or text are reused. Cherminal's file formats are its own
-(TOML), and it does not attempt to read TinyTerm's session files.
+(TOML). It can import TinyTERM `.tpx` session files (see `cherminal/tinyterm.py`),
+reading the settings Century Software documents publicly (the TPX File Settings
+page and the TE Control's value tables); the files are plain INI text.
 
 Where a behaviour is not pinned down by a public reference, the code marks
 it `UNVERIFIED` so it can be checked against real hardware or a manual.
