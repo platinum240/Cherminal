@@ -56,6 +56,8 @@ site policy, certificates, host keys, logging, eLux rollout) and
   copy/paste (including X11 primary selection), colour schemes, any code page.
 - **Right-click menu and search:** copy, paste, search and one-off colours;
   a search bar that looks up or down through the screen and scrollback.
+- **Split screen:** right-click › Split screen to work in up to four
+  sessions side by side in one tab.
 - **File upload over SSH:** drop files on the window to send them to the
   host by SFTP, when the session allows it.
 - **Mainframe file transfer:** IND$FILE send and receive for TSO, CICS and
@@ -265,6 +267,24 @@ older text, **▼** / Shift+Enter searches down, and both wrap around. The
 settings button on the right has **Match case**, **Match whole word** and
 **Regular expression**. Esc closes the bar. Hidden text, such as a password
 field, is never matched.
+
+## Split screen
+
+Right-click the screen and choose **Split screen › With this session** to
+open a second connection to the same host beside the first, or **With
+another session…** to pick any saved session. View › Split screen
+(Ctrl+Shift+D, ⌘D on a Mac) does the same as *With this session*. A tab
+holds up to four panes: two sit side by side, a third starts a second row
+and a fourth makes a 2 × 2 grid. Drag the dividers to resize them.
+
+Click a pane (or View › Next pane) to work in it. The active pane has a
+coloured border, and the menus, status bar, function-key bar and search
+follow it. Each pane is its own connection with its own screen size, so in
+"add rows and columns" mode the host is told each pane's size.
+Right-click › **Close this pane** (or View › Close pane) closes one;
+closing the tab closes them all. Session › Reconnect and editing a session
+reopen it in the same pane. Limited users can split their own session but
+not choose others.
 
 ## Uploading files over SSH
 
