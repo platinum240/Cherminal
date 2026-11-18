@@ -3,6 +3,13 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.14.1
+
+- Telnet trace: with `CHERMINAL_TRACE` set to a file name, every byte a
+  Telnet session sends and receives is written there, with the connection
+  and how it ended, to find out why a host hangs up. See Troubleshooting in
+  the administrator guide.
+
 ## 0.14.0
 
 - Imports TinyTERM `.tpx` session files: `cherminal --import Store.tpx`, or

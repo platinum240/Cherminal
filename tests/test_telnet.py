@@ -59,3 +59,28 @@ def test_encode():
     assert proto.encode(b"x\r\n") == b"x\r\n"
     proto.receive(bytes([IAC, DO, BINARY]))
     assert proto.encode(b"\r") == b"\r"
+
+
+def test_trace_records_the_conversation(tmp_path, monkeypatch):
+    import socket
+    import threading
+
+    from cherminal.transport import telnet
+    trace = tmp_path / "trace.txt"
+    monkeypatch.setenv(telnet.TRACE_ENV, str(trace))
+    srv = socket.create_server(("127.0.0.1", 0))
+
+    def serve():
+        conn, _ = srv.accept()
+        conn.sendall(b"login: ")
+        while conn.recv(100):
+            pass
+        conn.close()
+    threading.Thread(target=serve, daemon=True).start()
+    t = telnet.TelnetTransport("127.0.0.1", srv.getsockname()[1], term_type="tvi950")
+    t._open()
+    assert t._read() == b"login: "
+    t._close()
+    srv.close()
+    text = trace.read_text()
+    assert "connected to" in text and "> b'\\xff\\xfb\\x18" in text and "< b'login: '" in text

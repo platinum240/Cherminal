@@ -18,9 +18,11 @@ separate from sockets so it can be tested directly.
 
 from __future__ import annotations
 
+import os
 import socket
 import ssl
 import struct
+import time
 from typing import Callable
 
 from .base import Transport, tcp_keepalive
@@ -287,6 +289,32 @@ def _env_escape(text: bytes) -> bytes:
     return bytes(out)
 
 
+TRACE_ENV = "CHERMINAL_TRACE"
+
+
+class _Trace:
+    """Writes every byte sent and received to the file named by
+    $CHERMINAL_TRACE, to see why a host hangs up. Off when it isn't set."""
+
+    def __init__(self, host: str, port: int):
+        self.path = os.path.expanduser(os.environ.get(TRACE_ENV, ""))
+        self.line(f"--- {host}:{port}")
+
+    def line(self, text: str) -> None:
+        if not self.path:
+            return
+        try:
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%H:%M:%S')} {text}\n")
+        except OSError:
+            pass
+
+    def data(self, arrow: str, data: bytes) -> None:
+        if self.path:
+            self.line(f"{arrow} {data!r}" if len(data) < 2048 else
+                      f"{arrow} {data[:2048]!r} ... ({len(data)} bytes)")
+
+
 class TelnetTransport(Transport):
     def __init__(self, host: str, port: int = 23, term_type: str = "VT220",
                  timeout: float = 15.0, tn3270: bool = False, tls: bool = False,
@@ -297,6 +325,7 @@ class TelnetTransport(Transport):
         self.tls, self.tls_verify = tls, tls_verify
         self.ca_file = ca_file        # extra CA certificates (e.g. an in-house CA)
         self.sock: socket.socket | None = None
+        self.trace = _Trace(host, port)
         self.proto = TelnetProtocol(self._raw_send, term_type, tn3270=tn3270,
                                     device_name=device_name,
                                     tn3270e=tn3270e, lu_name=lu_name,
@@ -313,6 +342,7 @@ class TelnetTransport(Transport):
 
     def _raw_send(self, data: bytes) -> None:
         if self.sock:
+            self.trace.data(">", data)
             self.sock.sendall(data)
 
     def _open(self) -> None:
@@ -326,7 +356,12 @@ class TelnetTransport(Transport):
             if not self.tls_verify:
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
-        sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        try:
+            sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        except OSError as e:
+            self.trace.line(f"connect failed: {e}")
+            raise
+        self.trace.line(f"connected to {sock.getpeername()}")
         if self.keepalive:
             tcp_keepalive(sock, self.keepalive)
         if ctx:
@@ -342,9 +377,15 @@ class TelnetTransport(Transport):
 
     def _read(self) -> bytes:
         while True:
-            raw = self.sock.recv(65536)
+            try:
+                raw = self.sock.recv(65536)
+            except OSError as e:
+                self.trace.line(f"receive failed: {e}")
+                raise
             if not raw:
+                self.trace.line("host closed the connection")
                 return b""
+            self.trace.data("<", raw)
             data = self.proto.receive(raw)
             if self.proto.error:
                 raise OSError(self.proto.error)
@@ -370,6 +411,7 @@ class TelnetTransport(Transport):
         return self.proto.server_echoes
 
     def _close(self) -> None:
+        self.trace.line("closed by Cherminal")
         if self.sock:
             try:
                 self.sock.shutdown(socket.SHUT_RDWR)

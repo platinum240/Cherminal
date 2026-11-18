@@ -525,6 +525,7 @@ changelog says otherwise.
 | Sessions disconnect after 15 minutes | That is the default idle timeout ([section 8](#8-idle-timeout-keep-alive-and-reconnecting)). |
 | Connections drop after a few minutes of quiet | A firewall closes idle connections. Lower `keepalive` (for example 30 seconds) and consider `auto_reconnect`. |
 | No session log appears | Check the session's Logging tab and the policy's `session_logging`; a status bar message reports a folder that can't be written. |
+| A Telnet host hangs up straight away ("forcibly closed by the remote host", "connection reset") | Record what is sent and received: set `CHERMINAL_TRACE` to a file name and start Cherminal from that shell, for example in PowerShell `$env:CHERMINAL_TRACE="$HOME\cherminal-trace.txt"; & "C:\Program Files\Cherminal\Cherminal.exe"`, or on Linux `CHERMINAL_TRACE=~/cherminal-trace.txt cherminal`. The file shows the Telnet options and terminal type offered and the host's last reply. It contains what you type, including passwords, so delete it after use. |
 | Keys send the wrong thing | Use `cherminal-keycapture` against the old emulator, or the **Keyboard map…** editor on the session's Keyboard tab. |
 
 ## Appendix: session settings
