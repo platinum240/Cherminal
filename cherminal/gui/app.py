@@ -5,12 +5,12 @@ from __future__ import annotations
 import signal
 import sys
 
-from PyQt6.QtCore import QLoggingCategory, Qt, QTimer
+from PyQt6.QtCore import QEvent, QLoggingCategory, QObject, Qt, QTimer
 from PyQt6.QtGui import QAction, QKeySequence
 from PyQt6.QtWidgets import (QApplication, QFontDialog, QLabel, QMainWindow, QMessageBox,
                              QTabWidget, QToolBar, QToolButton, QVBoxLayout, QWidget)
 
-from .. import __version__, policy, system
+from .. import __version__, policy, system, tinyterm
 from ..config import ProfileStore, SessionProfile
 from ..desktop import APP_ID, entry_installed
 from ..keymap import Binding
@@ -372,6 +372,28 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
+class _FileOpener(QObject):
+    """Opens files the desktop sends as QFileOpenEvent (macOS Finder)."""
+
+    def __init__(self, win: "MainWindow"):
+        super().__init__(win)
+        self.win = win
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() == QEvent.Type.FileOpen:
+            path = event.file()
+            if tinyterm.is_tpx(path) and not self.win.limited:
+                try:
+                    profile = tinyterm.read(path)[0]
+                    policy.current().check(profile)
+                except (OSError, ValueError) as e:
+                    QMessageBox.warning(self.win, "Open", f"Cannot open {path}: {e}")
+                else:
+                    self.win.open_session(profile)
+                return True
+        return super().eventFilter(obj, event)
+
+
 def run(profiles: list[SessionProfile], store: ProfileStore, show_manager: bool,
         limited: bool = False) -> int:
     QApplication.setApplicationName("Cherminal")
@@ -408,6 +430,10 @@ def run(profiles: list[SessionProfile], store: ProfileStore, show_manager: bool,
     tick = QTimer(interval=250)
     tick.timeout.connect(lambda: None)
     tick.start()
+    # macOS hands a file opened from Finder (a TinyTERM .tpx) to the running
+    # app as an event rather than on the command line.
+    opener = _FileOpener(win)
+    app.installEventFilter(opener)
     win.resize(820, 520)
     win.show()
     for p in profiles:

@@ -15,7 +15,7 @@ def test_install_desktop_entry(tmp_path, monkeypatch, capsys):
     entry = tmp_path / "share/applications/cherminal.desktop"
     assert f"installed {entry}" in capsys.readouterr().out
     text = entry.read_text()
-    assert 'Exec="/opt/apps/Cherminal 0.8.AppImage" %U' in text and "Icon=cherminal" in text
+    assert 'Exec="/opt/apps/Cherminal 0.8.AppImage" %F' in text and "Icon=cherminal" in text
     assert (tmp_path / "share/icons/hicolor/256x256/apps/cherminal.png").stat().st_size > 1000
     assert (tmp_path / "share/icons/hicolor/scalable/apps/cherminal.svg").exists()
     assert desktop.entry_installed()

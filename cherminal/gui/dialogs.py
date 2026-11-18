@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (QCheckBox, QColorDialog, QComboBox, QCompleter, QDi
                              QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout,
                              QWidget)
 
-from .. import emulation, policy, system
+from .. import emulation, policy, system, tinyterm
 from ..config import (BUNDLE_SUFFIX, DEFAULT_PORTS, TRANSPORTS, ProfileStore, SessionProfile,
                       split_host_port)
 from ..keymap import Binding, normalize_key
@@ -1028,19 +1028,33 @@ class SessionManager(QDialog):
             self.refresh()
 
     def _import(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Import sessions", "",
-                                              f"Cherminal sessions (*{BUNDLE_SUFFIX});;"
-                                              "All files (*)")
-        if not path:
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Import sessions", "",
+            f"Sessions (*{BUNDLE_SUFFIX} *{tinyterm.SUFFIX});;"
+            f"Cherminal sessions (*{BUNDLE_SUFFIX});;"
+            f"TinyTERM sessions (*{tinyterm.SUFFIX});;All files (*)")
+        if not paths:
             return
-        try:
-            names = self.store.import_bundle(path)
-        except (OSError, ValueError, TypeError) as e:
-            QMessageBox.warning(self, "Import sessions", f"Could not import {path}: {e}")
-            return
+        names, notes, failed = [], [], []
+        for path in paths:
+            try:
+                if tinyterm.is_tpx(path):
+                    profile, extra = tinyterm.read(path)
+                    self.store.save(profile)
+                    names.append(profile.name)
+                    notes += [f"{profile.name}: {n}" for n in extra]
+                else:
+                    names += self.store.import_bundle(path)
+            except (OSError, ValueError, TypeError) as e:
+                failed.append(f"{path}: {e}")
         self.refresh()
-        QMessageBox.information(self, "Import sessions",
-                                "Imported: " + (", ".join(names) or "no sessions"))
+        text = "Imported: " + (", ".join(names) or "no sessions")
+        if notes:
+            text += "\n\nCheck these:\n" + "\n".join(f"• {n}" for n in notes)
+        if failed:
+            text += "\n\nCould not import:\n" + "\n".join(failed)
+        box = QMessageBox.warning if failed else QMessageBox.information
+        box(self, "Import sessions", text)
 
     def _export(self) -> None:
         profiles = self._selected()

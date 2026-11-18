@@ -40,6 +40,24 @@
       </Directory>
     </StandardDirectory>
 
+    <!-- TinyTERM .tpx session files: Cherminal is added to "Open with" for
+         .tpx without taking the default away from TinyTERM when both are
+         installed; where nothing else opens .tpx files, Windows offers
+         Cherminal for them. -->
+    <Component Id="TpxFileType" Directory="INSTALLFOLDER"
+               Guid="5d0e9a51-3c1f-4a8e-9a57-0f7b8c2e6d41">
+      <RegistryValue Root="HKLM" Key="Software\Classes\Cherminal.tpx"
+                     Type="string" Value="TinyTERM session" KeyPath="yes" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\Cherminal.tpx\DefaultIcon"
+                     Type="string" Value="[INSTALLFOLDER]Cherminal.exe,0" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\Cherminal.tpx\shell\open\command"
+                     Type="string" Value="&quot;[INSTALLFOLDER]Cherminal.exe&quot; &quot;%1&quot;" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\.tpx\OpenWithProgids"
+                     Name="Cherminal.tpx" Type="string" Value="" />
+      <RegistryValue Root="HKLM" Key="Software\Classes\Applications\Cherminal.exe\SupportedTypes"
+                     Name=".tpx" Type="string" Value="" />
+    </Component>
+
     <StandardDirectory Id="ProgramMenuFolder">
       <Component Id="StartMenuEntry" Guid="b60f6e8c-5c14-40b9-9723-6a4252659587">
         <!-- The ID groups the app's windows under this shortcut's taskbar

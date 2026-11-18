@@ -39,6 +39,20 @@ app = BUNDLE(
         "NSHumanReadableCopyright": "Apache License 2.0",
         # macOS 15 and later ask before an app connects to hosts on the local
         # network (a mainframe or IBM i on the LAN); this is the reason shown.
+        # TinyTERM .tpx session files: Finder offers Cherminal to open them
+        # (as an alternative, so an installed TinyTERM keeps them).
+        "UTImportedTypeDeclarations": [{
+            "UTTypeIdentifier": "com.censoft.tinyterm.session",
+            "UTTypeDescription": "TinyTERM session",
+            "UTTypeConformsTo": ["public.data", "public.text"],
+            "UTTypeTagSpecification": {"public.filename-extension": ["tpx"]},
+        }],
+        "CFBundleDocumentTypes": [{
+            "CFBundleTypeName": "TinyTERM session",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": ["com.censoft.tinyterm.session"],
+        }],
         "NSLocalNetworkUsageDescription":
             "Cherminal connects to the hosts in your sessions, which may be on "
             "your local network.",

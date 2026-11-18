@@ -97,6 +97,28 @@ limited mode ([section 5](#5-locking-a-workstation-down)).
 **Import.** `cherminal --import mainframes.cherminal` copies the sessions
 and keymaps into the user's own folder instead.
 
+**Moving from TinyTERM.** Cherminal reads TinyTERM `.tpx` session files.
+`cherminal --import "Store 12.tpx" "Store 14.tpx"` (or Import in the session
+manager) saves each as a Cherminal session named after the file; check the
+notes it prints. Opening a `.tpx` file directly (`cherminal Store.tpx`, or a
+double-click once the file type is registered) connects without saving
+anything. Export the imported sessions as a `.cherminal` bundle to share them.
+
+What is carried over: the host (TinyTERM keeps a history of hosts in the
+file; the first, the one it connects to, is used and the others are listed
+in the notes), port, Telnet or serial line settings, emulation, columns and
+rows, scrollback, text and background colours, character set, Backspace and
+Enter, answerback and user name. What is not: passwords (Cherminal never
+stores them), TinyTERM's login scripts, toolbar, printers, fonts and window
+position. TinyTERM keyboard files are not read; use `cherminal-keycapture`
+as below.
+
+Double-clicking a `.tpx` file opens it in Cherminal on Windows (the
+installer adds Cherminal to *Open with* for `.tpx`, without taking the
+file type from TinyTERM if both are installed), on macOS (Finder offers
+Cherminal as an alternative application), and on Linux once
+`cherminal --install-desktop` has run or with the eLux package.
+
 **Keyboards.** To carry an existing TinyTerm (or other emulator) keyboard
 across, run `cherminal-keycapture` against the old emulator; it records
 what each key sends and saves a keymap. Put the keymap in a shared

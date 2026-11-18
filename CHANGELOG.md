@@ -3,6 +3,21 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.14.0
+
+- Imports TinyTERM `.tpx` session files: `cherminal --import Store.tpx`, or
+  Import in the session manager (which now takes several files at once).
+  Host, port, Telnet or serial settings, emulation (TeleVideo 950, Wyse,
+  VT, SCO ANSI, 3270, 5250), screen size, scrollback, colours, character
+  set, Backspace and Enter come across; what doesn't (passwords, login
+  scripts, the other hosts in TinyTERM's host history) is listed after the
+  import. See the administrator guide.
+- `cherminal Store.tpx` opens a TinyTERM session file without saving it, and
+  `.tpx` files open in Cherminal from the file manager: the Windows
+  installer adds Cherminal to *Open with*, the Mac app declares the type,
+  and `--install-desktop` and the eLux package register a MIME type.
+- The Linux menu entry passes files (`%F`) rather than URLs.
+
 ## 0.13.2
 
 - Smaller AppImage and eLux package: the build leaves out the parts of Qt

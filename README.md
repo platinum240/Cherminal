@@ -46,6 +46,7 @@ site policy, certificates, host keys, logging, eLux rollout) and
 - **Key mapping:** per-emulation defaults, reusable keymap files with
   inheritance, per-session overrides, application cursor/keypad aware, a
   press-to-capture editor, and `action:` bindings (paste, break, macros).
+- **TinyTERM sessions:** imports and opens TinyTERM `.tpx` session files.
 - **Saved sessions:** one readable TOML file per session (under
   `~/.config/cherminal/sessions/` on Linux); no passwords are stored.
 - **Scale to window:** by default the text grows and shrinks with the window
@@ -714,6 +715,13 @@ session, their copy is saved in their own folder and shown as
 **Import.** `cherminal --import mainframes.cherminal` (or Import… in the
 Sessions window) copies the sessions and keymaps into the user's own
 folder, replacing any with the same names.
+
+**From TinyTERM.** `cherminal --import "Store 12.tpx"` (or Import… with a
+`.tpx` file) turns a TinyTERM session file into a Cherminal session: host,
+port, emulation, screen size, colours, character set and keyboard basics
+come across, and anything that doesn't is listed. `cherminal "Store 12.tpx"`
+or double-clicking the file opens it without saving. See the
+[administrator guide](docs/ADMIN.md).
 
 ## Development
 
