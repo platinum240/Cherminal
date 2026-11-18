@@ -1,4 +1,4 @@
-"""Main window: tabbed sessions, menus and the function-key (macro) bar."""
+"""Main window: tabbed (and split) sessions, menus and the function-key (macro) bar."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from .dialogs import SessionColoursDialog, SessionEditor, SessionManager
 from .icons import app_icon, logo
 from .keybar import KeyBar
 from .search import SearchBar
+from .split import MAX_PANES, SplitView
 from .terminal import TerminalWidget
 
 
@@ -27,7 +28,7 @@ from .terminal import TerminalWidget
 # the menus use the usual Mac keys there (Cmd+T, Cmd+W, Cmd+C...).
 MAC_SHORTCUTS = {"Ctrl+Shift+O": "Ctrl+O", "Ctrl+Shift+N": "Ctrl+N", "Ctrl+Shift+T": "Ctrl+T",
                  "Ctrl+Shift+W": "Ctrl+W", "Ctrl+Shift+Q": "Ctrl+Q", "Ctrl+Shift+F": "Ctrl+F",
-                 "Ctrl+Shift+P": "Ctrl+P", "mac:copy": "Ctrl+C", "mac:paste": "Ctrl+V",
+                 "Ctrl+Shift+P": "Ctrl+P", "Ctrl+Shift+D": "Ctrl+D", "mac:copy": "Ctrl+C", "mac:paste": "Ctrl+V",
                  "mac:palette": "Ctrl+K"}
 
 
@@ -118,6 +119,13 @@ class MainWindow(QMainWindow):
                                            lambda: self._term() and self._term().view_history(-1))
         self.make_layout_action = self._action(
             v, "Make &layout from this screen…", lambda: self._term() and self._term().make_layout())
+        v.addSeparator()
+        self.split_action = self._action(
+            v, "S&plit screen", lambda: self._term() and self.split_session(self._term(), "same"),
+            "Ctrl+Shift+D")
+        self.next_pane_action = self._action(v, "&Next pane", self.next_pane)
+        self.close_pane_action = self._action(
+            v, "Close &pane", lambda: self._term() and self.close_pane(self._term()))
         # The button names the view it switches to; the menu item is a tick.
         self.modern_button = QToolButton(text="Modern view", autoRaise=True)
         self.modern_button.clicked.connect(self.modern_action.trigger)
@@ -163,7 +171,36 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------ sessions
 
     def _term(self) -> TerminalWidget | None:
-        return self.tabs.currentWidget()
+        """The current tab's terminal; in a split tab, the active pane."""
+        w = self.tabs.currentWidget()
+        return w.active if isinstance(w, SplitView) else w
+
+    @staticmethod
+    def _terms_in(w) -> list:
+        if isinstance(w, SplitView):
+            return w.terms()
+        return [w] if w is not None else []
+
+    def _all_terms(self) -> list:
+        return [t for i in range(self.tabs.count()) for t in self._terms_in(self.tabs.widget(i))]
+
+    def _tab_of(self, term) -> int:
+        """The index of the tab holding this terminal, or -1."""
+        for i in range(self.tabs.count()):
+            w = self.tabs.widget(i)
+            if w is term or (isinstance(w, SplitView) and term in w):
+                return i
+        return -1
+
+    def _view_of(self, term) -> SplitView | None:
+        idx = self._tab_of(term)
+        w = self.tabs.widget(idx) if idx >= 0 else None
+        return w if isinstance(w, SplitView) else None
+
+    def _split_info(self, term) -> tuple[int, bool, bool]:
+        view = self._view_of(term)
+        panes = view.count() if view else 1
+        return panes, panes < MAX_PANES, not self.limited
 
     def _run(self, action: str) -> None:
         term = self._term()
@@ -171,8 +208,9 @@ class MainWindow(QMainWindow):
             term.session.run_binding(Binding("action", action))
             term.update()
 
-    def open_session(self, profile: SessionProfile,
-                     colours: dict | None = None) -> TerminalWidget | None:
+    def _make_term(self, profile: SessionProfile,
+                   colours: dict | None = None) -> TerminalWidget | None:
+        """A terminal for a session, wired to the window but not yet placed."""
         try:
             session = Session(profile, self.store)
         except ValueError as e:
@@ -181,14 +219,27 @@ class MainWindow(QMainWindow):
         term = TerminalWidget(session, limited=self.limited)
         if colours:
             term.set_colour_override(colours)
+        self._wire(term)
+        return term
+
+    def _wire(self, term) -> None:
         term.find_requested.connect(self.open_search)
         term.colours_requested.connect(self.session_colours)
         term.message.connect(lambda text: self.statusBar().showMessage(text, 8000))
         term.palette_extra = self._palette_items
+        term.split_info = lambda t=term: self._split_info(t)
         term.layouts_saved.connect(self.reload_layouts)
-        idx = self.tabs.addTab(term, profile.name)
         term.title_changed.connect(lambda t, w=term: self._set_tab_title(w, t))
         term.status_changed.connect(lambda text, w=term: self._set_status(w, text))
+        term.split_requested.connect(lambda how, w=term: self.split_session(w, how))
+        term.close_pane_requested.connect(lambda w=term: self.close_pane(w))
+
+    def open_session(self, profile: SessionProfile,
+                     colours: dict | None = None) -> TerminalWidget | None:
+        term = self._make_term(profile, colours)
+        if term is None:
+            return None
+        idx = self.tabs.addTab(term, profile.name)
         self.tabs.setCurrentIndex(idx)
         if self.tabs.count() == 1:
             self.resize(term.sizeHint().width() + 20, term.sizeHint().height() + 100)
@@ -196,8 +247,105 @@ class MainWindow(QMainWindow):
         term.connect_session()
         return term
 
+    # --------------------------------------------------------- split screen
+
+    def _ensure_view(self, term) -> SplitView | None:
+        """The split view holding this terminal, making one if it sits alone in its tab."""
+        view = self._view_of(term)
+        if view is not None:
+            return view
+        idx = self._tab_of(term)
+        if idx < 0:
+            return None
+        text, current = self.tabs.tabText(idx), self.tabs.currentIndex() == idx
+        self.tabs.blockSignals(True)
+        try:
+            self.tabs.removeTab(idx)
+            view = SplitView(term)
+            self.tabs.insertTab(idx, view, text)
+            if current:
+                self.tabs.setCurrentIndex(idx)
+        finally:
+            self.tabs.blockSignals(False)
+        if getattr(term, "split_info", None) is None:
+            self._wire(term)        # a terminal put in a tab by hand (tests)
+        view.active_changed.connect(lambda t, v=view: self._pane_changed(v, t))
+        return view
+
+    def split_session(self, term, how: str = "same") -> TerminalWidget | None:
+        """Open a session in a new pane beside ``term``: the same session
+        again, or (``how="choose"``) one picked in the session manager."""
+        view = self._view_of(term)
+        if view is not None and not view.can_split():
+            self.statusBar().showMessage(f"A tab holds at most {MAX_PANES} panes", 8000)
+            return None
+        if how == "choose":
+            if self.limited:
+                return None
+            dlg = SessionManager(self.store, self, limited=self.limited)
+            if not (dlg.exec() and dlg.chosen):
+                term.setFocus()
+                return None
+            profile, colours = dlg.chosen, None
+        else:
+            profile, colours = term.session.profile, term.colour_override
+        new = self._make_term(profile, colours)
+        if new is None:
+            return None
+        view = self._ensure_view(term)
+        if view is None:
+            return None
+        view.add(new, after=term)
+        self.tabs.setCurrentWidget(view)
+        self._refresh_split_title(view)
+        new.setFocus()
+        self._tab_changed(self.tabs.currentIndex())
+        new.connect_session()
+        return new
+
+    def close_pane(self, term) -> None:
+        """Close one pane of a split tab; the last pane closes the tab."""
+        view = self._view_of(term)
+        if view is None or view.count() == 1:
+            idx = self._tab_of(term)
+            if idx >= 0:
+                self.close_tab(idx)
+            return
+        term.shutdown()
+        view.remove(term)
+        term.deleteLater()
+        self._refresh_split_title(view)
+        self._tab_changed(self.tabs.currentIndex())
+
+    def next_pane(self) -> None:
+        w = self.tabs.currentWidget()
+        if isinstance(w, SplitView):
+            w.focus_next()
+
+    def _pane_changed(self, view, term) -> None:
+        """Clicking into another pane: the menus and bars follow it."""
+        if self.tabs.currentWidget() is view:
+            self._tab_changed(self.tabs.currentIndex())
+
+    def _refresh_split_title(self, view) -> None:
+        idx = self.tabs.indexOf(view)
+        if idx < 0:
+            return
+        terms = view.terms()
+        if len(terms) == 1:
+            t = terms[0]
+            self.tabs.setTabText(idx, t.session.profile.name)
+            self.tabs.setTabToolTip(idx, "")
+            return
+        names = [t.session.profile.name for t in terms]
+        self.tabs.setTabText(idx, " | ".join(names))
+        self.tabs.setTabToolTip(idx, "\n".join(names))
+
     def _set_tab_title(self, term, title: str) -> None:
-        idx = self.tabs.indexOf(term)
+        view = self._view_of(term)
+        if view is not None and view.count() > 1:
+            return                  # a split tab is named after its sessions
+        idx = self._tab_of(term)
         if idx >= 0:
             name = term.session.profile.name
             self.tabs.setTabText(idx, f"{name}: {title}" if title else name)
@@ -213,6 +361,11 @@ class MainWindow(QMainWindow):
         self.keybar.set_terminal(term)
         self._show_modern_switch(term)
         self.transfer_action.setVisible(bool(term and term.session.can_transfer))
+        view = self.tabs.currentWidget()
+        panes = view.count() if isinstance(view, SplitView) else (1 if term else 0)
+        self.split_action.setEnabled(0 < panes < MAX_PANES)
+        self.next_pane_action.setEnabled(panes > 1)
+        self.close_pane_action.setEnabled(panes > 1)
         if not term:
             self.status.setText("")
             return
@@ -226,12 +379,34 @@ class MainWindow(QMainWindow):
         term.setFocus()
 
     def close_tab(self, idx: int) -> None:
-        term = self.tabs.widget(idx)
-        if term is None:
+        w = self.tabs.widget(idx)
+        if w is None:
             return
-        term.shutdown()
+        for term in self._terms_in(w):
+            term.shutdown()
         self.tabs.removeTab(idx)
-        term.deleteLater()
+        w.deleteLater()
+
+    def _replace_current(self, profile: SessionProfile,
+                         colours: dict | None = None) -> TerminalWidget | None:
+        """Reopen the current terminal with this profile, in the same place:
+        its own tab, or its pane of a split tab."""
+        old = self._term()
+        view = self._view_of(old) if old else None
+        if view is None or view.count() == 1:
+            self.close_tab(self.tabs.currentIndex())
+            return self.open_session(profile, colours)
+        new = self._make_term(profile, colours)
+        if new is None:
+            return None
+        old.shutdown()
+        view.replace(old, new)
+        old.deleteLater()
+        self._refresh_split_title(view)
+        new.setFocus()
+        self._tab_changed(self.tabs.currentIndex())
+        new.connect_session()
+        return new
 
     def open_manager(self) -> None:
         dlg = SessionManager(self.store, self, limited=self.limited)
@@ -253,16 +428,13 @@ class MainWindow(QMainWindow):
             if QMessageBox.question(self, "Session saved",
                                     "Reconnect now to apply the changes?") \
                     == QMessageBox.StandardButton.Yes:
-                idx = self.tabs.currentIndex()
-                self.close_tab(idx)
-                self.open_session(dlg.result_profile)
+                self._replace_current(dlg.result_profile)
 
     def reconnect(self) -> None:
         term = self._term()
         if term:
             profile, colours, modern = term.session.profile, term.colour_override, term.modern
-            self.close_tab(self.tabs.currentIndex())
-            new = self.open_session(profile, colours)
+            new = self._replace_current(profile, colours)
             if new:
                 new.set_modern(modern)
                 self._show_modern_switch(new)
@@ -306,8 +478,7 @@ class MainWindow(QMainWindow):
 
     def reload_layouts(self) -> None:
         """A layout rule was saved: every 3270/5250 tab uses it straight away."""
-        for i in range(self.tabs.count()):
-            term = self.tabs.widget(i)
+        for term in self._all_terms():
             if term.can_be_modern:
                 term.reload_layouts()
 
@@ -364,8 +535,8 @@ class MainWindow(QMainWindow):
             self.status.setText(term.status_text())
 
     def disconnect_all(self) -> None:
-        for i in range(self.tabs.count()):
-            self.tabs.widget(i).shutdown()
+        for term in self._all_terms():
+            term.shutdown()
 
     def closeEvent(self, event) -> None:
         self.disconnect_all()

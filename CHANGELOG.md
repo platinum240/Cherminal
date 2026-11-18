@@ -3,6 +3,15 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.15.0
+
+- Split screen: right-click › Split screen opens a session beside the
+  current one, the same host again or any saved session, up to four panes
+  in a tab (side by side, then a 2 × 2 grid). Click a pane to work in it;
+  the menus, status bar and function keys follow the active pane, which has
+  a coloured border. Also View › Split screen (Ctrl+Shift+D), Next pane and
+  Close pane. Reconnect and editing a session keep their pane.
+
 ## 0.14.0
 
 - Imports TinyTERM `.tpx` session files: `cherminal --import Store.tpx`, or

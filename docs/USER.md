@@ -57,6 +57,15 @@ before you answer Yes.
 
 Password fields are never copied, searched or printed.
 
+## Split screen
+
+Right-click the screen › **Split screen** to work in up to four sessions
+side by side in one tab: **With this session** opens the same host again,
+**With another session…** lets you pick one. Click a pane to type in it;
+the active one has a coloured border. Right-click › **Close this pane**
+closes one. View › Split screen (Ctrl+Shift+D) and View › Next pane do the
+same from the menu.
+
 ## Colours and text size
 
 - **Colours for this session only:** right-click › Colours for this
