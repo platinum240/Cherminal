@@ -246,6 +246,18 @@ cursor_color = "#ff00ff"
 bright-blue = "#80c0ff"
 ```
 
+### Window appearance
+
+**View › Appearance** sets the look of the window around the sessions:
+the menu bar, tabs, function-key bar and status bar, and the dialogs.
+**Graphite** (dark) and **Paper** (light) share one layout with a cherry
+accent, a quiet tab close ✕ that turns red under the mouse, and a status
+bar that leads with a green dot when the session is connected. **Follow
+the desktop**, the default, switches between them with the desktop's dark
+or light setting. **Classic** leaves the desktop's own style alone. The
+host screens are never restyled. The choice is saved in `settings.toml` in
+the Cherminal config folder.
+
 ### Changing colours for one session only
 
 **View › Colours for this session…** (also on the right-click menu) changes

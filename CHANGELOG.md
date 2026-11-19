@@ -3,6 +3,17 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.16.0
+
+- New window look: View › Appearance offers **Graphite** (dark) and
+  **Paper** (light), with tidier tabs, a quiet close ✕ that turns cherry
+  under the mouse, rounded function-key buttons, and a status bar with a
+  green dot when the session is connected. **Follow the desktop** (the
+  default) picks Graphite or Paper from the desktop's dark or light
+  setting and switches when it changes; **Classic** keeps the old look.
+  Dialogs follow the same colours. The host screens are not restyled.
+  The choice is remembered in `settings.toml`.
+
 ## 0.15.1
 
 - Telnet login: with **Ask for user name and password when connecting**

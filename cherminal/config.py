@@ -6,6 +6,7 @@ Everything lives under ``$XDG_CONFIG_HOME/cherminal`` (``~/.config/cherminal``;
 * ``sessions/<slug>.toml`` - one profile per file
 * ``keymaps/<name>.toml``  - reusable keymaps (``inherit`` + ``[keys]``)
 * ``known_hosts``          - SSH host keys accepted from Cherminal
+* ``settings.toml``        - window settings that are not per session (appearance)
 """
 
 from __future__ import annotations
@@ -263,6 +264,29 @@ class ProfileStore:
     @property
     def layouts_dir(self) -> Path:
         return self.root / "layouts"
+
+    # ------------------------------------------------------ window settings
+
+    @property
+    def settings_path(self) -> Path:
+        return self.root / "settings.toml"
+
+    def settings(self) -> dict:
+        """Settings for the window rather than a session; {} if none or unreadable."""
+        try:
+            with open(self.settings_path, "rb") as f:
+                return tomllib.load(f)
+        except (OSError, tomllib.TOMLDecodeError):
+            return {}
+
+    def save_setting(self, key: str, value) -> None:
+        data = self.settings()
+        data[key] = value
+        self.root.mkdir(parents=True, exist_ok=True)
+        tmp = self.settings_path.with_suffix(".toml.tmp")
+        with open(tmp, "wb") as f:
+            tomli_w.dump(data, f)
+        os.replace(tmp, self.settings_path)
 
     # ------------------------------------------------------- site folders
 
