@@ -68,6 +68,12 @@ same from the menu.
 
 ## Colours and text size
 
+- **Window look:** View › Appearance changes the menus, tabs and status
+  bar around the screens. **Graphite** is dark, **Paper** is light,
+  **Follow the desktop** (the default) uses Graphite when your desktop is
+  in dark mode and Paper when it is light, and **Classic** keeps your
+  desktop's own style. The host screens keep their own colours whichever
+  you pick, and Cherminal remembers the choice.
 - **Colours for this session only:** right-click › Colours for this
   session… (or View › Colours for this session…). Pick a scheme such as
   high contrast or yellow on black, set text and background colours, or

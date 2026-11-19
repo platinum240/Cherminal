@@ -6,7 +6,7 @@ import signal
 import sys
 
 from PyQt6.QtCore import QEvent, QLoggingCategory, QObject, Qt, QTimer
-from PyQt6.QtGui import QAction, QKeySequence
+from PyQt6.QtGui import QAction, QActionGroup, QGuiApplication, QKeySequence
 from PyQt6.QtWidgets import (QApplication, QFontDialog, QLabel, QMainWindow, QMessageBox,
                              QTabWidget, QToolBar, QToolButton, QVBoxLayout, QWidget)
 
@@ -15,6 +15,7 @@ from ..config import ProfileStore, SessionProfile
 from ..desktop import APP_ID, entry_installed
 from ..keymap import Binding
 from ..session import Session
+from . import appearance
 from .dialogs import SessionColoursDialog, SessionEditor, SessionManager
 from .icons import app_icon, logo
 from .keybar import KeyBar
@@ -47,7 +48,12 @@ class MainWindow(QMainWindow):
         # new connections or local shell.
         self.limited = limited
         self.setWindowTitle(f"Cherminal {__version__}")
-        self.tabs = QTabWidget(tabsClosable=True, movable=True, documentMode=True)
+        self.tabs = QTabWidget()
+        self.tabs.setTabBar(appearance.SessionTabBar())
+        self.tabs.setTabsClosable(True)
+        self.tabs.setMovable(True)
+        self.tabs.setDocumentMode(True)
+        self.tabs.setObjectName("sessionTabs")
         self.tabs.tabCloseRequested.connect(self.close_tab)
         self.tabs.currentChanged.connect(self._tab_changed)
         self.search = SearchBar()
@@ -61,11 +67,18 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.search)
         self.setCentralWidget(central)
         self.status = QLabel()
+        self.status_plain = ""
         self.statusBar().addWidget(self.status, 1)
         self.fkey_bar = QToolBar("Function keys")
         self.fkey_bar.setObjectName("fkeys")
         self.addToolBar(self.fkey_bar)
+        self.theme: appearance.Theme | None = None
+        self.appearance = appearance.DEFAULT
         self._build_menus()
+        self.set_appearance(store.settings().get("appearance", appearance.DEFAULT), save=False)
+        hints = QGuiApplication.styleHints()
+        if hasattr(hints, "colorSchemeChanged"):        # Qt 6.5+: the desktop went dark/light
+            hints.colorSchemeChanged.connect(self._desktop_scheme_changed)
 
     # -------------------------------------------------------------- menus
 
@@ -108,6 +121,15 @@ class MainWindow(QMainWindow):
         self.scale_action.setCheckable(True)
         self._action(v, "Show &function-key bar",
                      lambda: self.fkey_bar.setVisible(not self.fkey_bar.isVisible()))
+        look = v.addMenu("&Appearance")
+        group = QActionGroup(self)
+        self.appearance_actions = {}
+        for name in appearance.APPEARANCES:
+            act = QAction(appearance.LABELS[name], self, checkable=True)
+            act.triggered.connect(lambda _=False, n=name: self.set_appearance(n))
+            group.addAction(act)
+            look.addAction(act)
+            self.appearance_actions[name] = act
         # Modern view for IBM 3270/5250 tabs: in the View menu and beside the tabs.
         self.modern_action = self._action(v, "&Modern view", self.toggle_modern, "Ctrl+Shift+M")
         self.modern_action.setCheckable(True)
@@ -352,7 +374,40 @@ class MainWindow(QMainWindow):
 
     def _set_status(self, term, text: str) -> None:
         if term is self._term():
+            self._show_status(text)
+
+    def _show_status(self, text: str) -> None:
+        self.status_plain = text
+        if self.theme is None:
+            self.status.setTextFormat(Qt.TextFormat.PlainText)
             self.status.setText(text)
+        else:
+            self.status.setTextFormat(Qt.TextFormat.RichText)
+            self.status.setText(appearance.status_html(text, self.theme))
+
+    # ---------------------------------------------------------- appearance
+
+    def set_appearance(self, name: str, save: bool = True) -> None:
+        """Graphite, Paper, follow the desktop ("system") or Classic."""
+        if name not in appearance.APPEARANCES:
+            name = appearance.DEFAULT
+        self.appearance = name
+        self.theme = appearance.apply(QApplication.instance(), name)
+        self.appearance_actions[name].setChecked(True)
+        styled = self.theme is not None
+        self.tabs.tabBar().setDrawBase(not styled)
+        self.tabs.tabBar().set_roomy_close(styled)
+        self.fkey_bar.setMovable(not styled)
+        self._show_status(self.status_plain)
+        if save:
+            try:
+                self.store.save_setting("appearance", name)
+            except OSError as e:
+                self.statusBar().showMessage(f"Could not save the appearance: {e}", 8000)
+
+    def _desktop_scheme_changed(self, _scheme=None) -> None:
+        if self.appearance == "system":
+            self.set_appearance("system", save=False)
 
     def _tab_changed(self, _idx: int) -> None:
         term = self._term()
@@ -367,9 +422,9 @@ class MainWindow(QMainWindow):
         self.next_pane_action.setEnabled(panes > 1)
         self.close_pane_action.setEnabled(panes > 1)
         if not term:
-            self.status.setText("")
+            self._show_status("")
             return
-        self.status.setText(term.status_text())
+        self._show_status(term.status_text())
         self.scale_action.setChecked(term.resize_mode == "scale")
         for name in term.session.profile.macros:
             act = self.fkey_bar.addAction(name)
@@ -532,7 +587,7 @@ class MainWindow(QMainWindow):
         term = self._term()
         if term:
             term.set_resize_mode("scale" if self.scale_action.isChecked() else "grow")
-            self.status.setText(term.status_text())
+            self._show_status(term.status_text())
 
     def disconnect_all(self) -> None:
         for term in self._all_terms():
