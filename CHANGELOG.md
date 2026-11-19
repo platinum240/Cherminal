@@ -3,7 +3,7 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
-## 0.14.1
+## 0.15.1
 
 - Telnet login: with **Ask for user name and password when connecting**
   on a Telnet session, Cherminal asks before it connects, passes the user
@@ -16,6 +16,15 @@ Check what you are running with `cherminal --version` (or
   Telnet session sends and receives is written there, with the connection
   and how it ended, to find out why a host hangs up. See Troubleshooting in
   the administrator guide.
+
+## 0.15.0
+
+- Split screen: right-click › Split screen opens a session beside the
+  current one, the same host again or any saved session, up to four panes
+  in a tab (side by side, then a 2 × 2 grid). Click a pane to work in it;
+  the menus, status bar and function keys follow the active pane, which has
+  a coloured border. Also View › Split screen (Ctrl+Shift+D), Next pane and
+  Close pane. Reconnect and editing a session keep their pane.
 
 ## 0.14.0
 

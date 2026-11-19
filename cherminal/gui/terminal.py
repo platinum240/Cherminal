@@ -102,6 +102,8 @@ class TerminalWidget(QWidget):
     screen_changed = pyqtSignal()               # Modern view: the key bar may need updating
     layouts_saved = pyqtSignal()                # a layout rule was saved: every tab reloads
     colours_requested = pyqtSignal()
+    split_requested = pyqtSignal(str)           # "same": this session again, "choose": pick one
+    close_pane_requested = pyqtSignal()
 
     def __init__(self, session: Session, parent=None, limited: bool = False):
         super().__init__(parent)
@@ -136,6 +138,9 @@ class TerminalWidget(QWidget):
         self.viewing: int | None = None             # the past screen shown, or None for live
         self.command_palette: CommandPalette | None = None
         self.palette_extra = None                   # the window's own palette items
+        # Split screen: the window sets this to a callable giving
+        # (panes in this tab, room for another, may choose other sessions).
+        self.split_info = None
         session.keep_history = self.modern
         self._pending: tuple[str, float] | None = None  # a transaction waiting on Clear
         self.nav = NavBar(self)
@@ -930,6 +935,19 @@ class TerminalWidget(QWidget):
         menu.addAction("Search…", self.find_requested.emit)
         menu.addAction("Colours for this session…", self.colours_requested.emit)
         menu.addAction("Print screen…", self.print_screen)
+        if self.split_info is not None:
+            panes, room, choose = self.split_info()
+            menu.addSeparator()
+            split = menu.addMenu("Split screen")
+            split.setEnabled(room)
+            if not room:
+                split.setTitle("Split screen (4 panes is the most)")
+            split.addAction("With this session", lambda: self.split_requested.emit("same"))
+            if choose:
+                split.addAction("With another session…",
+                                lambda: self.split_requested.emit("choose"))
+            if panes > 1:
+                menu.addAction("Close this pane", self.close_pane_requested.emit)
         if self.can_be_modern:
             menu.addSeparator()
             menu.addAction("Copy screen text", self.copy_screen)
