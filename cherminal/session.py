@@ -39,6 +39,8 @@ class Session:
         # Emulation state is touched from the reader thread and the UI thread.
         self.lock = threading.RLock()
         self.on_action: Callable[[str], None] = lambda name: None
+        # Is text selected on screen? action:copy-selection copies only then.
+        self.has_selection: Callable[[], bool] = lambda: False
         self.last_input = time.monotonic()
         self.dropped = False            # the last connection broke rather than ended
         self.started: float | None = None
@@ -240,6 +242,11 @@ class Session:
         """
         self.touch()
         binding = self.keymap.lookup(name, self.emulation.app_cursor, self.emulation.app_keypad)
+        if binding is not None and binding.value == "copy-selection" and binding.kind == "action":
+            if self.has_selection():
+                self.on_action("copy")
+                return True
+            binding = None          # nothing selected: the key goes to the host as usual
         if binding is None:
             if not text:
                 return False
@@ -260,6 +267,8 @@ class Session:
         self.touch()
         if binding.kind == "send":
             self.send_text(binding.value)
+        elif binding.value == "copy-selection":
+            self.on_action("copy")          # from a macro or the key bar: copy if selected
         elif self.emulation.block_mode and self._block_action(binding.value):
             pass
         elif binding.value.startswith("macro:"):

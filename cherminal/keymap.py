@@ -275,6 +275,13 @@ COMMON = {
     "Print": "action:print-screen",
 }
 
+# Ctrl+C and Ctrl+V as on a PC: Ctrl+C copies only while text is selected
+# (otherwise it is the host's Ctrl+C, interrupt), Ctrl+V pastes. Added for a
+# session unless its ``ctrl_copy_paste`` setting is off, or its keymap already
+# binds the key; never on a Mac, where Command+C and Command+V do this and
+# Control is the host's.
+CLIPBOARD_KEYS = {"Ctrl+C": "action:copy-selection", "Ctrl+V": "action:paste"}
+
 # Mac keyboards have no Insert (extended ones have Help there, which counts
 # as Insert), Pause, Print or SysReq key, and laptops have no keypad. On
 # macOS the IBM maps add these so every 3270 and 5250 function has a key;

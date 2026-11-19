@@ -57,7 +57,9 @@ answer it once.
 **Menu shortcuts** are the usual Mac ones: ⌘C copy, ⌘V paste, ⌘F search,
 ⌘P print screen, ⌘T local shell, ⌘N quick connect, ⌘O sessions, ⌘W close
 tab, ⌘Q quit. (On Linux they are Ctrl+Shift+letter, to keep Ctrl free for
-the host; on a Mac, Command already is.)
+the host; on a Mac, Command already is.) The terminal takes ⌘C and ⌘V
+itself, so they work whenever the screen has the focus; Control+C and
+Control+V go to the host.
 
 **Option key** (session editor, Keyboard tab). Mac keyboards type accented
 characters with Option (Option+E then E types é). Host applications

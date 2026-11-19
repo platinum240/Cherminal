@@ -20,7 +20,7 @@ from pathlib import Path
 import tomli_w
 
 from . import emulation, system
-from .keymap import BUILTIN, Keymap
+from .keymap import BUILTIN, CLIPBOARD_KEYS, Keymap
 
 TRANSPORTS = ("ssh", "telnet", "serial", "local")
 DEFAULT_PORTS = {"ssh": 22, "telnet": 23}
@@ -98,6 +98,8 @@ class SessionProfile:
     keymap: str = ""                  # "" = emulation's built-in keymap
     backspace: str = ""               # "" | "del" | "bs"
     option_key: str = "left-alt"      # macOS Option: alt | left-alt | text (types characters)
+    ctrl_copy_paste: bool = True      # Linux/Windows: Ctrl+C (with a selection) copies and
+                                      # Ctrl+V pastes; off sends both to the host
     answerback: str = ""
     local_echo: bool = False
     enter_sends: str = "cr"           # cr | crlf | lf
@@ -407,6 +409,8 @@ class ProfileStore:
         """Built-in table -> named keymap file -> profile settings -> profile [keys]."""
         default = emulation.EMULATIONS[profile.emulation].keymap
         km = self.load_keymap_layers(profile.keymap or default)
+        if profile.ctrl_copy_paste and not system.IS_MAC:
+            km.update({k: v for k, v in CLIPBOARD_KEYS.items() if k not in km.bindings})
         if emulation.EMULATIONS[profile.emulation].block_mode:
             # 3270/5250 keys are actions, not bytes; Enter/Backspace settings don't apply.
             km.update(profile.keys)

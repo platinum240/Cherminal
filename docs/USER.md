@@ -43,9 +43,14 @@ before you answer Yes.
 
 ## Copy, paste and search
 
-- **Copy:** select text with the mouse, then right-click › Copy (or Edit ›
-  Copy). Selected text is also ready to paste with the middle mouse button.
-- **Paste:** right-click › Paste, Edit › Paste, or the middle mouse button.
+- **Copy:** select text with the mouse, then press Ctrl+C (⌘C on a Mac)
+  or right-click › Copy. With nothing selected, Ctrl+C goes to the host as
+  usual (interrupt). Selected text is also ready to paste with the middle
+  mouse button.
+- **Paste:** Ctrl+V (⌘V on a Mac), right-click › Paste, Edit › Paste, or
+  the middle mouse button. Ctrl+Shift+C and Ctrl+Shift+V work too. If a
+  host needs Ctrl+V itself, untick **Ctrl+C copies selected text, Ctrl+V
+  pastes** on the session editor's Keyboard tab.
 - **Search:** right-click › Search…, or Ctrl+Shift+F. A search bar opens at
   the bottom. Type what you're looking for; Enter (or the up arrow) finds
   the one above, Shift+Enter (or the down arrow) the one below, and it

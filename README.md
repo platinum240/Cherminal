@@ -273,6 +273,12 @@ Right-click the screen for **Copy**, **Paste**, **Search…** and **Colours for
 this session…**. Selecting with the mouse also fills the X11 primary
 selection, and the middle button pastes it.
 
+**Keys:** Ctrl+V pastes and Ctrl+C copies while text is selected (with
+nothing selected Ctrl+C still interrupts on the host); Ctrl+Shift+C,
+Ctrl+Shift+V and Shift+Insert work too. On a Mac it is ⌘C and ⌘V, and
+Control stays the host's. Untick **Ctrl+C copies selected text, Ctrl+V
+pastes** (session editor, Keyboard tab) to send both keys to the host.
+
 **Search…** (or Edit › Search…, Ctrl+Shift+F) opens a bar under the screen.
 Type to find the nearest match above; **▲** / Enter searches up through
 older text, **▼** / Shift+Enter searches down, and both wrap around. The

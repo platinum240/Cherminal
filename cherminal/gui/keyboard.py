@@ -50,7 +50,8 @@ KEYPAD = [("Num", OFF, 0, 1, 1, 1), ("/", "KeypadDivide", 1, 1, 1, 1),
 # punctuation by the character it types, so Shift+1 is "Shift+!".
 US_SHIFTED = dict(zip("`1234567890-=[]\\;',./", "~!@#$%^&*()_+{}|:\"<>?"))
 
-GENERAL_ACTIONS = [("copy", "Copy"), ("paste", "Paste"), ("break", "Send Break"),
+GENERAL_ACTIONS = [("copy", "Copy"), ("copy-selection", "Copy if selected, else send"),
+                   ("paste", "Paste"), ("break", "Send Break"),
                    ("scroll-up", "Scroll back"), ("scroll-down", "Scroll forward"),
                    ("reset", "Reset terminal"), ("print-screen", "Print screen")]
 IBM3270_ACTIONS = (
@@ -62,8 +63,8 @@ IBM3270_ACTIONS = (
      ("left", "Cursor left"), ("right", "Cursor right")]
     + [(f"pa{i}", f"PA{i}") for i in range(1, 4)]
     + [(f"pf{i}", f"PF{i}") for i in range(1, 25)]
-    + [("copy", "Copy"), ("paste", "Paste"), ("print-screen", "Print screen"),
-       ("palette", "Command palette")])
+    + [("copy", "Copy"), ("copy-selection", "Copy if selected, else send"),
+       ("paste", "Paste"), ("print-screen", "Print screen"), ("palette", "Command palette")])
 
 IBM5250_ACTIONS = (
     [("enter", "Enter"), ("field-exit", "Field Exit"), ("field-plus", "Field+"),
@@ -78,8 +79,8 @@ IBM5250_ACTIONS = (
      ("up", "Cursor up"), ("down", "Cursor down"), ("left", "Cursor left"),
      ("right", "Cursor right")]
     + [(f"f{i}", f"F{i}") for i in range(1, 25)]
-    + [("copy", "Copy"), ("paste", "Paste"), ("print-screen", "Print screen"),
-       ("palette", "Command palette")])
+    + [("copy", "Copy"), ("copy-selection", "Copy if selected, else send"),
+       ("paste", "Paste"), ("print-screen", "Print screen"), ("palette", "Command palette")])
 
 DEFAULT, PLAIN, SEND = "<default>", "<plain>", "<send>"
 
