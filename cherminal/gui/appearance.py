@@ -15,7 +15,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QGuiApplication, QPalette
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QHBoxLayout, QTabBar, QToolButton, QWidget
 
 APPEARANCES = ("system", "graphite", "paper", "classic")
 LABELS = {"system": "Follow the &desktop", "graphite": "&Graphite (dark)",
@@ -97,7 +97,7 @@ def _icon(name: str) -> str:
 
 def stylesheet(t: Theme) -> str:
     close = _icon(f"tab-close-{t.name}.svg")
-    close_hover = _icon(f"tab-close-{t.name}-hover.svg")
+    close_hover = _icon("tab-close-hover.svg")
     check = _icon("check.svg")
     tabs = "QTabWidget#sessionTabs > QTabBar"      # the session tabs; dialogs keep plain tabs
     return f"""
@@ -118,15 +118,16 @@ QToolBar#fkeys QToolButton {{ background: {t.raised}; color: {t.text}; border: 1
 QToolBar#fkeys QToolButton:hover {{ border-color: {t.accent}; }}
 QTabWidget#sessionTabs::pane {{ border: none; }}
 {tabs} {{ background: {t.chrome}; }}
-{tabs}::tab {{ background: transparent; color: {t.muted}; padding: 7px 8px 7px 14px;
+{tabs}::tab {{ background: transparent; color: {t.muted}; padding: 8px 4px 8px 14px;
     margin: 5px 2px 0 2px; border: none; border-top-left-radius: 7px;
     border-top-right-radius: 7px; min-width: 90px; }}
 {tabs}::tab:first {{ margin-left: 6px; }}
 {tabs}::tab:hover {{ background: {t.hover}; color: {t.text}; }}
 {tabs}::tab:selected {{ background: {t.tab}; color: {t.text}; border-top: 2px solid {t.accent}; }}
-{tabs}::close-button {{ image: url("{close}"); subcontrol-position: right; margin-left: 8px;
-    width: 16px; height: 16px; border-radius: 4px; }}
-{tabs}::close-button:hover {{ image: url("{close_hover}"); }}
+{tabs} QToolButton#tabClose {{ image: url("{close}"); border: none; border-radius: 6px;
+    padding: 4px; background: transparent; }}
+{tabs} QToolButton#tabClose:hover {{ image: url("{close_hover}"); background: {t.accent}; }}
+{tabs} QToolButton#tabClose:pressed {{ image: url("{close_hover}"); background: {t.text}; }}
 QTabWidget#sessionTabs > QToolButton {{ color: {t.muted}; padding: 4px 10px; border-radius: 5px; border: none; }}
 QTabWidget#sessionTabs > QToolButton:hover {{ background: {t.hover}; color: {t.text}; }}
 QCheckBox::indicator {{ width: 14px; height: 14px; border: 1px solid {t.muted};
@@ -172,3 +173,58 @@ def apply(app: QApplication, choice: str) -> Theme | None:
     app.setPalette(palette(theme))
     app.setStyleSheet(stylesheet(theme))
     return theme
+
+
+CLOSE_SIZE = 24         # the close button: big enough to hit without aiming
+CLOSE_MARGIN = (6, 0, 8, 0)     # space before it, and between it and the tab's edge
+
+
+class SessionTabBar(QTabBar):
+    """The session tabs. In Graphite and Paper each tab gets a larger close
+    button, set in from the tab's edge; Classic keeps the desktop's own."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.roomy_close = False
+
+    def set_roomy_close(self, on: bool) -> None:
+        if on == self.roomy_close:
+            return
+        self.roomy_close = on
+        for i in range(self.count()):
+            self._drop_button(i)
+        if on:
+            for i in range(self.count()):
+                self._add_close(i)
+        elif self.tabsClosable():
+            self.setTabsClosable(False)          # puts the desktop's buttons back
+            self.setTabsClosable(True)
+
+    def tabInserted(self, index: int) -> None:
+        super().tabInserted(index)
+        if self.roomy_close:
+            self._add_close(index)
+
+    def _drop_button(self, index: int) -> None:
+        old = self.tabButton(index, QTabBar.ButtonPosition.RightSide)
+        self.setTabButton(index, QTabBar.ButtonPosition.RightSide, None)
+        if old is not None:
+            old.deleteLater()
+
+    def _add_close(self, index: int) -> None:
+        self._drop_button(index)                # the desktop's own, made by insertTab
+        holder = QWidget()
+        lay = QHBoxLayout(holder)
+        lay.setContentsMargins(*CLOSE_MARGIN)
+        button = QToolButton(holder, objectName="tabClose", toolTip="Close tab",
+                             cursor=Qt.CursorShape.PointingHandCursor)
+        button.setFixedSize(CLOSE_SIZE, CLOSE_SIZE)
+        button.clicked.connect(lambda _=False, h=holder: self._close(h))
+        lay.addWidget(button)
+        self.setTabButton(index, QTabBar.ButtonPosition.RightSide, holder)
+
+    def _close(self, holder: QWidget) -> None:
+        for i in range(self.count()):
+            if self.tabButton(i, QTabBar.ButtonPosition.RightSide) is holder:
+                self.tabCloseRequested.emit(i)
+                return

@@ -46,7 +46,7 @@ def test_close_icons_ship_with_the_app(app):
     from cherminal.gui import appearance
     for theme in appearance.THEMES.values():
         css = appearance.stylesheet(theme)
-        for name in (f"tab-close-{theme.name}.svg", f"tab-close-{theme.name}-hover.svg", "check.svg"):
+        for name in (f"tab-close-{theme.name}.svg", "tab-close-hover.svg", "check.svg"):
             assert name in css
             assert Path(str(appearance.RESOURCES / name)).is_file()
         assert "\\" not in css.split("url(")[1].split(")")[0]     # forward slashes, even on Windows
@@ -92,6 +92,31 @@ def test_window_uses_and_saves_the_appearance(make_win, tmp_path, app):
     assert app.styleSheet() == ""
     assert win.status.text() == term.status_text()
     assert win.tabs.tabBar().drawBase()
+
+
+def test_roomy_close_button_closes_its_own_tab(make_win, tmp_path):
+    from PyQt6.QtWidgets import QTabBar, QToolButton
+    from cherminal.gui.appearance import CLOSE_MARGIN, CLOSE_SIZE
+    store = ProfileStore(tmp_path, site_roots=[])
+    store.save_setting("appearance", "graphite")
+    win = make_win(store)
+    for name in ("One", "Two", "Three"):
+        win.open_session(SessionProfile(name=name, transport="telnet", host="h.example"))
+    bar = win.tabs.tabBar()
+    holder = bar.tabButton(1, QTabBar.ButtonPosition.RightSide)
+    button = holder.findChild(QToolButton, "tabClose")
+    assert button.width() == CLOSE_SIZE and holder.layout().contentsMargins().right() == CLOSE_MARGIN[2]
+    button.click()
+    assert [win.tabs.tabText(i) for i in range(win.tabs.count())] == ["One", "Three"]
+    bar.moveTab(1, 0)                                   # dragged tabs keep the right button
+    bar.tabButton(0, QTabBar.ButtonPosition.RightSide).findChild(QToolButton, "tabClose").click()
+    assert [win.tabs.tabText(i) for i in range(win.tabs.count())] == ["One"]
+
+    win.set_appearance("classic")                       # the desktop's own button comes back
+    stock = bar.tabButton(0, QTabBar.ButtonPosition.RightSide)
+    assert stock is not None and stock.objectName() != "tabClose" and not stock.findChild(QToolButton, "tabClose")
+    win.set_appearance("paper")
+    assert bar.tabButton(0, QTabBar.ButtonPosition.RightSide).findChild(QToolButton, "tabClose")
 
 
 def test_unknown_setting_falls_back_to_the_desktop(make_win, tmp_path):

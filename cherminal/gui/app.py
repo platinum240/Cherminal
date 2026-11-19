@@ -48,7 +48,11 @@ class MainWindow(QMainWindow):
         # new connections or local shell.
         self.limited = limited
         self.setWindowTitle(f"Cherminal {__version__}")
-        self.tabs = QTabWidget(tabsClosable=True, movable=True, documentMode=True)
+        self.tabs = QTabWidget()
+        self.tabs.setTabBar(appearance.SessionTabBar())
+        self.tabs.setTabsClosable(True)
+        self.tabs.setMovable(True)
+        self.tabs.setDocumentMode(True)
         self.tabs.setObjectName("sessionTabs")
         self.tabs.tabCloseRequested.connect(self.close_tab)
         self.tabs.currentChanged.connect(self._tab_changed)
@@ -392,6 +396,7 @@ class MainWindow(QMainWindow):
         self.appearance_actions[name].setChecked(True)
         styled = self.theme is not None
         self.tabs.tabBar().setDrawBase(not styled)
+        self.tabs.tabBar().set_roomy_close(styled)
         self.fkey_bar.setMovable(not styled)
         self._show_status(self.status_plain)
         if save:

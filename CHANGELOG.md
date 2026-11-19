@@ -6,7 +6,8 @@ Check what you are running with `cherminal --version` (or
 ## 0.16.0
 
 - New window look: View › Appearance offers **Graphite** (dark) and
-  **Paper** (light), with tidier tabs, a quiet close ✕ that turns cherry
+  **Paper** (light), with tidier tabs, a larger close ✕ set in from the
+  tab edge that turns cherry
   under the mouse, rounded function-key buttons, and a status bar with a
   green dot when the session is connected. **Follow the desktop** (the
   default) picks Graphite or Paper from the desktop's dark or light
