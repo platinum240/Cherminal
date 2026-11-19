@@ -18,9 +18,11 @@ separate from sockets so it can be tested directly.
 
 from __future__ import annotations
 
+import os
 import socket
 import ssl
 import struct
+import time
 from typing import Callable
 
 from .base import Transport, tcp_keepalive
@@ -64,6 +66,7 @@ class TelnetProtocol:
         self.term_type = term_type
         self.tn3270 = tn3270            # record mode: TN3270 or TN5250
         self.device_name = device_name
+        self.env_user = ""              # NEW-ENVIRON USER, when the person gave a login
         self.we_support = WE_SUPPORT_3270 if tn3270 else WE_SUPPORT
         if tn3270 and device_name:
             self.we_support = self.we_support | {NEW_ENVIRON}
@@ -232,9 +235,15 @@ class TelnetProtocol:
                       + bytes([IAC, SE]))
         elif len(sb) >= 2 and sb[0] == NEW_ENVIRON and sb[1] == ENV_SEND \
                 and NEW_ENVIRON in self.local:
-            # Only the device name is sent: no user or password (no auto sign-on).
-            env = bytes([ENV_USERVAR]) + _env_escape(b"DEVNAME") + bytes([ENV_VALUE]) + \
-                _env_escape(self.device_name.encode("ascii"))
+            # The device name, and the user name the person typed at connect;
+            # never a password.
+            env = b""
+            if self.env_user:
+                env += bytes([ENV_VAR]) + _env_escape(b"USER") + bytes([ENV_VALUE]) + \
+                    _env_escape(self.env_user.encode("latin-1", "replace"))
+            if self.device_name:
+                env += bytes([ENV_USERVAR]) + _env_escape(b"DEVNAME") + bytes([ENV_VALUE]) + \
+                    _env_escape(self.device_name.encode("ascii"))
             self.send(bytes([IAC, SB, NEW_ENVIRON, ENV_IS]) + env + bytes([IAC, SE]))
 
     # ------------------------------------------------------------ TN3270E
@@ -287,16 +296,51 @@ def _env_escape(text: bytes) -> bytes:
     return bytes(out)
 
 
+TRACE_ENV = "CHERMINAL_TRACE"
+
+
+class _Trace:
+    """Writes every byte sent and received to the file named by
+    $CHERMINAL_TRACE, to see why a host hangs up. Off when it isn't set."""
+
+    def __init__(self, host: str, port: int):
+        self.path = os.path.expanduser(os.environ.get(TRACE_ENV, ""))
+        self.line(f"--- {host}:{port}")
+
+    def line(self, text: str) -> None:
+        if not self.path:
+            return
+        try:
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(f"{time.strftime('%H:%M:%S')} {text}\n")
+        except OSError:
+            pass
+
+    def data(self, arrow: str, data: bytes) -> None:
+        if self.path:
+            self.line(f"{arrow} {data!r}" if len(data) < 2048 else
+                      f"{arrow} {data[:2048]!r} ... ({len(data)} bytes)")
+
+
 class TelnetTransport(Transport):
     def __init__(self, host: str, port: int = 23, term_type: str = "VT220",
                  timeout: float = 15.0, tn3270: bool = False, tls: bool = False,
                  tls_verify: bool = True, ca_file: str = "", device_name: str = "",
-                 tn3270e: bool = False, lu_name: str = "", printer: bool = False):
+                 tn3270e: bool = False, lu_name: str = "", printer: bool = False,
+                 username: str = "", ask_login=None):
         super().__init__()
+        # ask_login(host, suggested_user, error) -> (user, password) or None:
+        # asked before connecting, then the host's "login:" and "Password:"
+        # prompts are answered, as TinyTERM's UNIX login does.
+        self.username, self.ask_login = username, ask_login
+        self._login: tuple[str, str] | None = None
+        self._login_step = 0
+        self._login_seen = b""
         self.host, self.port, self.timeout = host, port, timeout
         self.tls, self.tls_verify = tls, tls_verify
         self.ca_file = ca_file        # extra CA certificates (e.g. an in-house CA)
         self.sock: socket.socket | None = None
+        self.trace = _Trace(host, port)
         self.proto = TelnetProtocol(self._raw_send, term_type, tn3270=tn3270,
                                     device_name=device_name,
                                     tn3270e=tn3270e, lu_name=lu_name,
@@ -313,9 +357,22 @@ class TelnetTransport(Transport):
 
     def _raw_send(self, data: bytes) -> None:
         if self.sock:
+            self.trace.data(">", data)
             self.sock.sendall(data)
 
     def _open(self) -> None:
+        if self.ask_login and self._login is None:
+            if self._closing:
+                raise OSError("closed")
+            login = self.ask_login(self.host, self.username, "")
+            if login is None:
+                raise OSError("login cancelled")
+            self._login = login
+            self.username = login[0]
+        self._login_step, self._login_seen = 0, b""
+        if self._login and not self.proto.tn3270:
+            self.proto.env_user = self._login[0]
+            self.proto.we_support = self.proto.we_support | {NEW_ENVIRON}
         ctx = None
         if self.tls:
             ctx = ssl.create_default_context()
@@ -326,7 +383,12 @@ class TelnetTransport(Transport):
             if not self.tls_verify:
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
-        sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        try:
+            sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
+        except OSError as e:
+            self.trace.line(f"connect failed: {e}")
+            raise
+        self.trace.line(f"connected to {sock.getpeername()}")
         if self.keepalive:
             tcp_keepalive(sock, self.keepalive)
         if ctx:
@@ -339,17 +401,43 @@ class TelnetTransport(Transport):
         self.sock.settimeout(None)
         self.proto.cols, self.proto.rows = self.cols, self.rows
         self.proto.start()
+        if self._login and not self.proto.tn3270:
+            self.trace.line("auto-login: sending Enter, then answering login: and Password:")
+            self._write(b"\r")         # TinyTERM's login starts with a carriage return
 
     def _read(self) -> bytes:
         while True:
-            raw = self.sock.recv(65536)
+            try:
+                raw = self.sock.recv(65536)
+            except OSError as e:
+                self.trace.line(f"receive failed: {e}")
+                raise
             if not raw:
+                self.trace.line("host closed the connection")
                 return b""
+            self.trace.data("<", raw)
             data = self.proto.receive(raw)
             if self.proto.error:
                 raise OSError(self.proto.error)
             if data:
+                self._answer_login(data)
                 return data
+
+    def _answer_login(self, data: bytes) -> None:
+        """Type the user name at the first "login:" and the password at the
+        first "Password:", once each; the person types from then on."""
+        if not self._login or self._login_step >= 2:
+            return
+        self._login_seen = (self._login_seen + data.lower())[-256:]
+        user, password = (s.encode("latin-1", "replace") for s in self._login)
+        if b"assword:" in self._login_seen:
+            self.trace.line("auto-login: answered the password prompt")
+            self._write(password + b"\r")
+            self._login_step, self._login_seen = 2, b""
+        elif self._login_step == 0 and b"ogin:" in self._login_seen:
+            self.trace.line("auto-login: answered the login prompt")
+            self._write(user + b"\r")
+            self._login_step, self._login_seen = 1, b""
 
     def _write(self, data: bytes) -> None:
         self._raw_send(self.proto.encode(data))
@@ -370,6 +458,7 @@ class TelnetTransport(Transport):
         return self.proto.server_echoes
 
     def _close(self) -> None:
+        self.trace.line("closed by Cherminal")
         if self.sock:
             try:
                 self.sock.shutdown(socket.SHUT_RDWR)

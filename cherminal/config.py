@@ -70,7 +70,8 @@ class SessionProfile:
     lu_name: str = ""                 # 3270: TN3270E CONNECT to this LU (printer or display)
     username: str = ""
     identity_file: str = ""           # SSH private key
-    ask_login: bool = False           # SSH: ask for user name and password on connect
+    ask_login: bool = False           # SSH: ask for user name and password on connect;
+                                      # Telnet: ask, then answer login: and Password:
     file_transfer: bool = False       # SSH: upload files dropped on the window (SFTP)
     upload_dir: str = ""              # SSH: where dropped files go; "" = home folder
     command: str = ""                 # local: program to run (default $SHELL)

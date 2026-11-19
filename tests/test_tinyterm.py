@@ -18,6 +18,7 @@ scrollback=999
 user=
 password=
 login=0
+loginscheme=UNIX Password
 cptrxin=STD 437 MS-DOS Latin US
 lines=24
 bsdel=0
@@ -52,6 +53,7 @@ def test_reads_a_telnet_session(tmp_path):
     assert (profile.fg_color, profile.bg_color) == ("#ffff55", "#0000aa")   # yellow on blue
     assert profile.encoding == "cp437"
     assert profile.backspace == "bs" and profile.enter_sends == "cr"
+    assert profile.ask_login
     assert notes == ["TinyTERM also lists host2.example.com, host3.example.com"]
 
 

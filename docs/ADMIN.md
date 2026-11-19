@@ -108,8 +108,11 @@ What is carried over: the host (TinyTERM keeps a history of hosts in the
 file; the first, the one it connects to, is used and the others are listed
 in the notes), port, Telnet or serial line settings, emulation, columns and
 rows, scrollback, text and background colours, character set, Backspace and
-Enter, answerback and user name. What is not: passwords (Cherminal never
-stores them), TinyTERM's login scripts, toolbar, printers, fonts and window
+Enter, answerback and user name. When the file has TinyTERM's
+UNIX login scheme, the session asks for a user name and password before it
+connects and answers the host's `login:` and `Password:` prompts, as
+TinyTERM does. What is not carried over: saved passwords (Cherminal never
+stores them), other TinyTERM login scripts, toolbar, printers, fonts and window
 position. TinyTERM keyboard files are not read; use `cherminal-keycapture`
 as below.
 
@@ -525,6 +528,7 @@ changelog says otherwise.
 | Sessions disconnect after 15 minutes | That is the default idle timeout ([section 8](#8-idle-timeout-keep-alive-and-reconnecting)). |
 | Connections drop after a few minutes of quiet | A firewall closes idle connections. Lower `keepalive` (for example 30 seconds) and consider `auto_reconnect`. |
 | No session log appears | Check the session's Logging tab and the policy's `session_logging`; a status bar message reports a folder that can't be written. |
+| A Telnet host hangs up straight away ("forcibly closed by the remote host", "connection reset") | Record what is sent and received: set `CHERMINAL_TRACE` to a file name and start Cherminal from that shell, for example in PowerShell `$env:CHERMINAL_TRACE="$HOME\cherminal-trace.txt"; & "C:\Program Files\Cherminal\Cherminal.exe"`, or on Linux `CHERMINAL_TRACE=~/cherminal-trace.txt cherminal`. The file shows the Telnet options and terminal type offered and the host's last reply. It contains what you type, including passwords, so delete it after use. |
 | Keys send the wrong thing | Use `cherminal-keycapture` against the old emulator, or the **Keyboard map…** editor on the session's Keyboard tab. |
 
 ## Appendix: session settings
@@ -545,7 +549,7 @@ default.
 | `lu_name` | | TN3270E LU to connect to (display or printer), up to 8 characters. |
 | `username` | your login | SSH user name. |
 | `identity_file` | | SSH private key file. |
-| `ask_login` | `false` | SSH: ask for user name and password when connecting. |
+| `ask_login` | `false` | SSH: ask for user name and password when connecting. Telnet: ask before connecting, then answer the host's `login:` and `Password:` prompts. |
 | `file_transfer` | `false` | SSH: allow uploading dropped files (SFTP). |
 | `upload_dir` | home folder | SSH: where uploads go; `~/` means the home folder. |
 | `command` | login shell | Local shell: program to run. |
