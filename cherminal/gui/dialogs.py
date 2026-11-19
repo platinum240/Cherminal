@@ -594,13 +594,20 @@ class SessionEditor(QDialog):
                                    "Meta keys need Option as Alt.")
         if system.IS_MAC:
             f.addRow("Option key", self.option_key)
+        self.ctrl_copy_paste = QCheckBox("Ctrl+C copies selected text, Ctrl+V pastes")
+        self.ctrl_copy_paste.setToolTip(
+            "With nothing selected Ctrl+C still goes to the host (interrupt). Turn this off "
+            "to send both keys to the host always; Ctrl+Shift+C and Ctrl+Shift+V still "
+            "copy and paste.")
+        if not system.IS_MAC:       # a Mac uses Command+C and Command+V
+            f.addRow("Copy and paste", self.ctrl_copy_paste)
         lay.addLayout(f)
         visual = QPushButton("Keyboard map…")
         visual.setToolTip("Remap keys by clicking them on a picture of the keyboard")
         visual.clicked.connect(self._open_keyboard_map)
         lay.addWidget(visual, alignment=Qt.AlignmentFlag.AlignLeft)
         hint = QLabel("Values use \\e for Esc, \\r Enter, \\xHH bytes, ^A control keys, or "
-                      "action:paste / action:copy / action:break / action:macro:NAME. "
+                      "action:paste / action:copy / action:copy-selection / action:break / action:macro:NAME. "
                       "IBM 3270 keys: action:enter, action:pf1-pf24, action:pa1-pa3, "
                       "action:clear, action:reset and the others in the README. "
                       "IBM 5250 keys: action:enter, action:f1-f24, action:field-exit, "
@@ -846,6 +853,7 @@ class SessionEditor(QDialog):
         self.keymap.setCurrentIndex(max(0, self.keymap.findData(p.keymap)))
         self.backspace.setCurrentIndex(max(0, self.backspace.findData(p.backspace)))
         self.option_key.setCurrentIndex(max(0, self.option_key.findData(p.option_key)))
+        self.ctrl_copy_paste.setChecked(p.ctrl_copy_paste)
         idx = self.printer.findData(p.printer)
         if idx < 0 and p.printer:
             self.printer.addItem(p.printer, p.printer)
@@ -893,6 +901,7 @@ class SessionEditor(QDialog):
             font_size=self.font_size.value(), **self.colours.settings(),
             keymap=self.keymap.currentData(), backspace=self.backspace.currentData(),
             option_key=self.option_key.currentData(),
+            ctrl_copy_paste=self.ctrl_copy_paste.isChecked(),
             answerback=self.answerback.text(), local_echo=self.local_echo.isChecked(),
             hotspots=self.hotspots.isChecked(), view=self.view.currentData(),
             modern_theme=self.modern_theme.currentData(),

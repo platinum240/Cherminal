@@ -62,6 +62,9 @@ the `cherminal` and `cherminal-keycapture` commands.
 Cherminal reads the keyboard the same way as on Linux: Ctrl sends control
 codes, Alt is Alt, and the menus' shortcuts are Ctrl+Shift+letter (Ctrl+Shift+C
 copy, Ctrl+Shift+V paste, Ctrl+Shift+F search, Ctrl+Shift+P print screen).
+Ctrl+V also pastes, and Ctrl+C copies while text is selected (with nothing
+selected it goes to the host). The session editor's Keyboard tab turns
+that off for a host that needs those keys.
 Session files, keymaps and bundles are the same on every system.
 
 Windows keeps a few keys for itself, so the built-in IBM keymaps add

@@ -100,7 +100,8 @@ byte string in Cherminal escape notation or an action:
 
 * `\e` ESC, `\r`, `\n`, `\t`, `\xHH`, `\\`, and caret notation `^A`..`^_`,
   `^?` (DEL), `\^` for a literal caret.
-* `action:copy`, `action:paste`, `action:break`, `action:reset`,
+* `action:copy`, `action:copy-selection` (copy if text is selected, else the
+  key goes to the host), `action:paste`, `action:break`, `action:reset`,
   `action:macro:<name>`.
 
 Keys may be qualified by mode: `app:Up` applies only while the host has

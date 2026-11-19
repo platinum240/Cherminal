@@ -199,6 +199,7 @@ class TerminalWidget(QWidget):
         self._repaint = QTimer(self, singleShot=True, interval=16)
         self._repaint.timeout.connect(self.update)
         session.on_action = self.do_action
+        session.has_selection = lambda: bool(self.selected_text())
         session.emulation.on_bell = QApplication.beep
         # Connection upkeep: the idle timeout and reconnecting after a drop.
         self.ended = False              # the connection is over; Enter reconnects
@@ -477,7 +478,9 @@ class TerminalWidget(QWidget):
         (or any other key) goes back to the live screen."""
         binding = self.session.keymap.lookup(name)
         action = binding.value if binding and binding.kind == "action" else ""
-        if action in ("copy", "palette", "print-screen"):
+        if action == "copy-selection" and self.selected_text():
+            self.copy()
+        elif action in ("copy", "palette", "print-screen"):
             self.do_action(action)
         elif name in ("Left", "Up", "PageUp"):
             self.view_history(max(0, self.viewing - 1))
@@ -843,7 +846,21 @@ class TerminalWidget(QWidget):
     def focusNextPrevChild(self, next: bool) -> bool:
         return False   # keep Tab for the host
 
+    @staticmethod
+    def _mac_clipboard_key(event) -> str:
+        """macOS: "copy" or "paste" for Command+C and Command+V, else ""."""
+        if not system.IS_MAC or event.modifiers() != Qt.KeyboardModifier.ControlModifier:
+            return ""               # Qt reports Command as Control on a Mac
+        return {int(Qt.Key.Key_C): "copy", int(Qt.Key.Key_V): "paste"}.get(event.key(), "")
+
     def event(self, event) -> bool:
+        # macOS: the terminal takes Command+C and Command+V itself rather than
+        # leave them to the Edit menu's key equivalents, which do not always
+        # reach a focused terminal. Accepting the override stops the menu
+        # firing too, and the key comes back as a key press (keyPressEvent).
+        if event.type() == QEvent.Type.ShortcutOverride and self._mac_clipboard_key(event):
+            event.accept()
+            return True
         # macOS turns Option+letter into an accented character (or a dead key
         # that waits for the next one) before keyPressEvent sees it. When
         # Option is Alt, take the key at the shortcut stage, which comes first.
@@ -856,6 +873,9 @@ class TerminalWidget(QWidget):
         return super().event(event)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
+        if action := self._mac_clipboard_key(event):
+            self.do_action(action)
+            return
         if event.type() == QEvent.Type.KeyPress and self._alt_key == (event.key(),
                                                                        event.timestamp()):
             self._alt_key = None
@@ -889,7 +909,7 @@ class TerminalWidget(QWidget):
             self.session.send_text(event.commitString())
 
     def do_action(self, name: str) -> None:
-        if name == "copy":
+        if name in ("copy", "copy-selection"):
             self.copy()
         elif name == "paste":
             self.paste()

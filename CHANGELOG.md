@@ -3,6 +3,21 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.16.1
+
+- Copy and paste keys: on Linux and Windows **Ctrl+V** pastes and
+  **Ctrl+C** copies while text is selected. With nothing selected Ctrl+C
+  still goes to the host as an interrupt. Ctrl+Shift+C, Ctrl+Shift+V and
+  Shift+Insert work as before. A host that needs Ctrl+V itself can have it
+  back: untick **Ctrl+C copies selected text, Ctrl+V pastes** on the
+  session editor's Keyboard tab. A keymap or session key override that
+  binds either key also wins. The new `action:copy-selection` does the same
+  for any key.
+- macOS: ⌘C and ⌘V copy and paste in the terminal itself, rather than
+  depending on the Edit menu's shortcuts reaching it. Before, ⌘V could do
+  nothing and only right-click › Paste worked. Control+C and Control+V
+  still go to the host.
+
 ## 0.16.0
 
 - New window look: View › Appearance offers **Graphite** (dark) and
