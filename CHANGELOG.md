@@ -3,6 +3,16 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.16.3
+
+- Local shell and SSH screens no longer look shifted right and down. With
+  **Scale the text to fit** (the default), the text was sized from the
+  wrong font on a Mac, so it came out too small and floated in the middle
+  of the pane, with the prompt partway across. The text is now sized from
+  the font actually drawn and fills the window, and character sessions
+  (shells, VT, xterm, SCO ANSI and the like) start at the top left. IBM
+  3270 and 5250 screens stay centred.
+
 ## 0.16.2
 
 - TinyTERM import: `.tpx` files are now read with the right connection type

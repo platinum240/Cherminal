@@ -228,17 +228,26 @@ class TerminalWidget(QWidget):
             self.offset_x, self.offset_y = area.x(), area.y()
         self._apply_resize()
 
-    def set_font(self, family: str, size: float) -> None:
+    @staticmethod
+    def _make_font(family: str, size: float) -> QFont:
         font = QFont(system.font_family(family))
         font.setPointSizeF(size)
         font.setStyleHint(QFont.StyleHint.TypeWriter)
         font.setFixedPitch(True)
+        return font
+
+    def _cell_size(self, font: QFont) -> tuple[int, int]:
+        fm = QFontMetrics(font)
+        return (max(1, fm.horizontalAdvance("M")),
+                max(1, round(fm.height() * self._line_spacing())))
+
+    def set_font(self, family: str, size: float) -> None:
+        font = self._make_font(family, size)
         self.term_font = font
         self.bold_font = QFont(font)
         self.bold_font.setBold(True)
         fm = QFontMetrics(font)
-        self.cw = max(1, fm.horizontalAdvance("M"))
-        self.ch = max(1, round(fm.height() * self._line_spacing()))
+        self.cw, self.ch = self._cell_size(font)
         self.ascent = fm.ascent() + (self.ch - fm.height()) // 2
         self.updateGeometry()
         self.update()
@@ -673,20 +682,33 @@ class TerminalWidget(QWidget):
         width, height = area.width(), area.height()
         if width < 10 or height < 10:
             return
-        ref = QFont(self.base_family)
-        ref.setPointSizeF(100)
-        ref.setStyleHint(QFont.StyleHint.TypeWriter)
+        # Measure the font that is drawn, not the family the session names:
+        # on a Mac "Monospace" is drawn in Menlo, and Qt's own pick for the
+        # name "Monospace" has other metrics, which left the text too small.
+        ref = self._make_font(self.base_family, 100)
         fm = QFontMetricsF(ref)
         w100, h100 = fm.horizontalAdvance("M"), fm.height() * self._line_spacing()
         size = 100 * min(width / (s.cols * w100), height / (s.rows * h100))
         size = max(4.0, int(size * 2) / 2)          # half-point steps
         self.set_font(self.base_family, size)
-        # Integer cell metrics can round up; step down until the grid fits.
+        # Integer cell metrics can round either way: step until the grid
+        # fits and the next half point would not.
         while size > 4 and (self.cw * s.cols > width or self.ch * s.rows > height):
             size -= 0.5
             self.set_font(self.base_family, size)
+        for _ in range(40):
+            cw, ch = self._cell_size(self._make_font(self.base_family, size + 0.5))
+            if cw * s.cols > width or ch * s.rows > height:
+                break
+            size += 0.5
+            self.set_font(self.base_family, size)
         self.offset_x = area.x() + max(0, (width - self.cw * s.cols) // 2)
         self.offset_y = area.y() + max(0, (height - self.ch * s.rows) // 2)
+        if not self.session.emulation.block_mode:
+            # A shell or other character session starts at the top left, as
+            # in any terminal: spare room in the middle of the pane looked
+            # like the prompt had been pushed across and down the screen.
+            self.offset_x, self.offset_y = area.x(), area.y()
 
     # ---------------------------------------------------------- connection
 
