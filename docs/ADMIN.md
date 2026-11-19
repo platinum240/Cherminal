@@ -106,12 +106,12 @@ anything. Export the imported sessions as a `.cherminal` bundle to share them.
 
 What is carried over: the host (TinyTERM keeps a history of hosts in the
 file; the first, the one it connects to, is used and the others are listed
-in the notes), port, Telnet or serial line settings, emulation, columns and
+in the notes), connection type (SSH, Telnet or serial) and port, emulation, columns and
 rows, scrollback, text and background colours, character set, Backspace and
 Enter, answerback and user name. When the file has TinyTERM's
 UNIX login scheme, the session asks for a user name and password before it
-connects and answers the host's `login:` and `Password:` prompts, as
-TinyTERM does. What is not carried over: saved passwords (Cherminal never
+connects, as TinyTERM does: an SSH session signs in with them, and a Telnet
+session answers the host's `login:` and `Password:` prompts. What is not carried over: saved passwords (Cherminal never
 stores them), other TinyTERM login scripts, toolbar, printers, fonts and window
 position. TinyTERM keyboard files are not read; use `cherminal-keycapture`
 as below.
