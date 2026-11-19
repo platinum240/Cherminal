@@ -28,6 +28,7 @@ rtscts=0
 [TERM.comm]
 node=host1.example.com|ss://host2.example.com|host3.example.com|
 port=23
+sshport=22
 cdelay=TELNET
 commtype=5
 baud=19200
@@ -44,11 +45,12 @@ def write(tmp_path, text, name="Store 12.tpx"):
     return path
 
 
-def test_reads_a_telnet_session(tmp_path):
+def test_reads_an_ssh_session(tmp_path):
+    # commtype=5 and emulate=13 are what TinyTERM shows as SSH and VT220-7.
     profile, notes = tinyterm.read(write(tmp_path, SAMPLE))
     assert profile.name == "Store 12"
-    assert (profile.transport, profile.host, profile.port) == ("telnet", "host1.example.com", 0)
-    assert profile.emulation == "tvi950"
+    assert (profile.transport, profile.host, profile.port) == ("ssh", "host1.example.com", 0)
+    assert profile.emulation == "vt220"
     assert (profile.cols, profile.rows, profile.scrollback) == (132, 24, 999)
     assert (profile.fg_color, profile.bg_color) == ("#ffff55", "#0000aa")   # yellow on blue
     assert profile.encoding == "cp437"
@@ -63,29 +65,38 @@ def test_parse_keeps_values_exactly():
     assert tpx.get("term.comm", "COMMTYPE") == "5"
 
 
-@pytest.mark.parametrize("code, emulation", [(3, "vt220"), (5, "vt100"), (9, "scoansi"),
-                                             (10, "wyse60"), (14, "wyse50"), (15, "tvi925")])
+def test_telnet_and_ssh_ports(tmp_path):
+    profile, _ = tinyterm.read(write(tmp_path, SAMPLE.replace("commtype=5", "commtype=0")
+                                     .replace("port=23", "port=2323")))
+    assert (profile.transport, profile.port, profile.ask_login) == ("telnet", 2323, True)
+    profile, _ = tinyterm.read(write(tmp_path, SAMPLE.replace("sshport=22", "sshport=2222")))
+    assert (profile.transport, profile.port) == ("ssh", 2222)
+
+
+@pytest.mark.parametrize("code, emulation", [
+    (1, "scoansi"), (5, "scoansi"), (8, "tvi925"), (9, "tvi950"), (10, "vt100"),
+    (12, "vt220"), (13, "vt220"), (14, "vt320"), (16, "wyse50"), (17, "wyse60")])
 def test_emulation_codes(tmp_path, code, emulation):
     profile, _ = tinyterm.read(write(tmp_path, SAMPLE.replace("emulate=13", f"emulate={code}")))
     assert profile.emulation == emulation
 
 
 def test_unknown_emulation_falls_back_with_a_note(tmp_path):
-    profile, notes = tinyterm.read(write(tmp_path, SAMPLE.replace("emulate=13", "emulate=12")))
+    profile, notes = tinyterm.read(write(tmp_path, SAMPLE.replace("emulate=13", "emulate=4")))
     assert profile.emulation == "scoansi"
     assert any("PC Term" in n for n in notes)
 
 
 def test_mainframe_session(tmp_path):
     profile, _ = tinyterm.read(write(tmp_path, SAMPLE.replace("emulate=13", "emulate=24")))
-    assert profile.emulation == "ibm3278-3" and profile.transport == "telnet"
+    assert profile.emulation == "ibm3278-3" and profile.transport == "telnet"   # not SSH
     assert profile.cols == 80 and not profile.fg_color and not profile.encoding
 
 
 def test_serial_session(tmp_path, monkeypatch):
     monkeypatch.setattr(system, "IS_WINDOWS", False)
     monkeypatch.setattr(system, "IS_MAC", False)
-    text = SAMPLE.replace("commtype=5", "commtype=0").replace(
+    text = SAMPLE.replace("commtype=5", "commtype=2").replace(
         "node=host1.example.com|ss://host2.example.com|host3.example.com|", "node=").replace(
         "ComPort=1", "ComPort=2\nparity=2\nstopbits=2").replace("rtscts=0", "rtscts=1")
     profile, notes = tinyterm.read(write(tmp_path, text))

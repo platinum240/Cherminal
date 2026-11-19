@@ -9,10 +9,13 @@ printers, window position, its bitmap fonts); this module takes the ones
 that have a Cherminal equivalent and reports the rest that matter.
 
 Value codes come from Century Software's documentation: the emulation
-numbers are the TE control's "Emulation (Get Value)" table and the colours
+numbers are the TE control's "Emulation (Set Value)" table and the colours
 its 1-16 colour table (CScript Object Reference: TE Control), and the extra
-keys from "TPX File Settings". The connection type codes are not documented;
-``commtype=5`` is Telnet in every file seen (they also say ``cdelay=TELNET``).
+keys from "TPX File Settings". The connection type numbers are not published
+beyond the TE control's first four (0 Telnet, 1 Rlogin, 2 serial, 3 modem);
+``commtype=5`` is SSH, checked against sessions whose TinyTERM Session
+Properties say SSH with ``emulate=13`` shown as VT220-7. ``cdelay=TELNET``
+appears in SSH sessions too and says nothing about the connection.
 
 ``read(path)`` returns a :class:`SessionProfile` and a list of notes (things
 that were not or could not be carried over) for the person importing.
@@ -31,25 +34,28 @@ SUFFIX = ".tpx"
 
 # emulate=N -> (Cherminal emulation, TinyTERM's name). None: no equivalent.
 EMULATIONS: dict[int, tuple[str | None, str]] = {
-    1: ("vt320", "VT320"),
-    2: ("vt320", "VT320-7"),
-    3: ("vt220", "VT220"),
-    4: ("vt220", "VT220-7"),
-    5: ("vt100", "VT100/VT102"),
-    7: ("scoansi", "ANSI"),
-    8: ("at386", "AT386"),
-    9: ("scoansi", "SCO ANSI"),
-    10: ("wyse60", "Wyse 60"),
-    11: ("wyse60", "Wyse 60-25"),
-    12: (None, "PC Term"),
-    13: ("tvi950", "TeleVideo 950"),
-    14: ("wyse50", "Wyse 50"),
-    15: ("tvi925", "TeleVideo 925"),
-    16: ("tvi925", "TeleVideo 912"),
-    17: (None, "ADM-1"),
-    18: (None, "IBM 3101"),
+    0: (None, "ADM-1"),
+    1: ("scoansi", "ANSI"),
+    2: ("at386", "AT386"),
+    3: (None, "IBM 3101"),
+    4: (None, "PC Term"),
+    5: ("scoansi", "SCO ANSI"),
+    6: (None, "TTY"),
+    7: ("tvi925", "TeleVideo 912"),
+    8: ("tvi925", "TeleVideo 925"),
+    9: ("tvi950", "TeleVideo 950"),
+    10: ("vt100", "VT100"),
+    11: ("vt100", "VT102"),
+    12: ("vt220", "VT220"),
+    13: ("vt220", "VT220-7"),
+    14: ("vt320", "VT320"),
+    15: ("vt320", "VT320-7"),
+    16: ("wyse50", "Wyse 50"),
+    17: ("wyse60", "Wyse 60"),
+    18: ("wyse60", "Wyse 60-25"),
     19: (None, "IBM 3151"),
     20: (None, "IBM 3151-25"),
+    21: ("ibm3179-2", "IBM 3179-2"),
     22: ("ibm3477-fc", "IBM 3477"),
     23: ("ibm3278-2", "IBM 3278-2"),
     24: ("ibm3278-3", "IBM 3278-3"),
@@ -69,8 +75,7 @@ COLOURS = {
     13: "#ff5555", 14: "#ff55ff", 15: "#ffff55", 16: "#ffffff",
 }
 
-COMM_TELNET = 5
-COMM_SERIAL = 0
+COMM_TELNET, COMM_RLOGIN, COMM_SERIAL, COMM_MODEM, COMM_SSH = 0, 1, 2, 3, 5
 PARITY = {0: "none", 1: "odd", 2: "even", 3: "mark", 4: "space"}
 STOP_BITS = {0: 1, 1: 1.5, 2: 2}
 LINE_ENDS = {"\\r": "cr", "\\r\\n": "crlf", "\\n": "lf"}
@@ -145,7 +150,7 @@ def to_profile(tpx: TpxFile, name: str) -> tuple[SessionProfile, list[str]]:
     emu, comm = "term.emu", "term.comm"
     data: dict = {"name": name}
 
-    code = tpx.int(emu, "emulate", 9)
+    code = tpx.int(emu, "emulate", 5)
     mapped, tt_name = EMULATIONS.get(code, (None, f"emulation {code}"))
     if mapped is None:
         mapped = FALLBACK.get(tt_name, DEFAULT_FALLBACK)
@@ -157,7 +162,10 @@ def to_profile(tpx: TpxFile, name: str) -> tuple[SessionProfile, list[str]]:
     # ---------------------------------------------------------- connection
     names = hosts(tpx)
     commtype = tpx.int(comm, "commtype", COMM_TELNET)
-    if commtype == COMM_SERIAL and not names:
+    if commtype == COMM_SSH and block_mode:
+        notes.append("TinyTERM says SSH, but 3270 and 5250 need Telnet; imported as Telnet")
+        commtype = COMM_TELNET
+    if commtype in (COMM_SERIAL, COMM_MODEM) and not names:
         port = tpx.int(comm, "ComPort", 1)
         data.update(transport="serial", serial_device=_serial_device(port),
                     baud=tpx.int(comm, "baud", 9600),
@@ -168,19 +176,26 @@ def to_profile(tpx: TpxFile, name: str) -> tuple[SessionProfile, list[str]]:
         notes.append(f"serial port COM{port} became {data['serial_device']}; "
                      "change it if the device is elsewhere")
     else:
-        if commtype != COMM_TELNET:
-            notes.append(f"connection type {commtype} is not one Cherminal knows from "
-                         "TinyTERM; imported as Telnet, check it")
-        data["transport"] = "telnet"
+        if commtype not in (COMM_TELNET, COMM_SSH):
+            kind = {COMM_RLOGIN: "Rlogin", COMM_SERIAL: "a serial port",
+                    COMM_MODEM: "a modem"}.get(commtype, f"connection type {commtype}")
+            notes.append(f"TinyTERM uses {kind}, which Cherminal doesn't have; "
+                         "imported as Telnet, check it")
+        data["transport"] = "ssh" if commtype == COMM_SSH else "telnet"
         if names:
             data["host"] = names[0]
             if len(names) > 1:
                 notes.append("TinyTERM also lists " + ", ".join(names[1:]))
         else:
             notes.append("no host name in the file; add one before connecting")
-        port = tpx.int(comm, "port", 23)
-        if port != 23:
-            data["port"] = port
+        if data["transport"] == "ssh":
+            port = tpx.int(comm, "sshport", 22)
+            if port != 22:
+                data["port"] = port
+        else:
+            port = tpx.int(comm, "port", 23)
+            if port != 23:
+                data["port"] = port
         keepalive = tpx.int(comm, "telnetkeepalive")
         if keepalive > 0:
             data["keepalive"] = keepalive
@@ -215,10 +230,11 @@ def to_profile(tpx: TpxFile, name: str) -> tuple[SessionProfile, list[str]]:
         data["username"] = user
     if tpx.get(emu, "password").strip():
         notes.append("the saved password was not imported; Cherminal never stores passwords")
-    if data["transport"] == "telnet" and not block_mode and tpx.get(emu, "loginscheme").strip():
-        # TinyTERM asks for a user name and password before connecting and
-        # answers the host's login: and Password: prompts (its "UNIX
-        # Password" login scheme); Cherminal's Telnet login does the same.
+    if data["transport"] in ("telnet", "ssh") and not block_mode \
+            and tpx.get(emu, "loginscheme").strip():
+        # TinyTERM asks for a user name and password before connecting (its
+        # "UNIX Password" login scheme). Over SSH they are used to sign in;
+        # over Telnet Cherminal answers the host's login: and Password:.
         data["ask_login"] = True
     keymap_file = tpx.get(emu, "KeymapFile") or tpx.get(emu, "keyboardfile")
     if keymap_file.strip():

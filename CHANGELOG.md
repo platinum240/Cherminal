@@ -3,6 +3,16 @@
 Check what you are running with `cherminal --version` (or
 `./Cherminal-*.AppImage --version`); the window title shows it too.
 
+## 0.16.2
+
+- TinyTERM import: `.tpx` files are now read with the right connection type
+  and emulation. `commtype=5` is SSH (on `sshport`), not Telnet, and
+  `emulate` uses TinyTERM's own numbering, so 13 is VT220-7 and 12 is
+  VT220, not TeleVideo 950 and PC Term; the earlier import picked Telnet
+  and TeleVideo 950 for these sessions. Re-import them. SSH sessions from
+  files with TinyTERM's login scheme ask for the user name and password and
+  sign in with them.
+
 ## 0.16.1
 
 - Copy and paste keys: on Linux and Windows **Ctrl+V** pastes and
